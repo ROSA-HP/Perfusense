@@ -97,9 +97,9 @@ export default function App() {
         setSelectedPod={setSelectedPod}
       />
 
-      {/* Main Content Area */}
-      <div className="pl-64 lg:pl-72 pt-32 pb-16">
-        <main className="w-full px-4 sm:px-6 lg:px-8 max-w-[1720px] mx-auto">
+      {/* Main Content Area - Maximized Canvas */}
+      <div className="w-full px-3 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16 sm:pb-24">
+        <main className="w-full max-w-[1720px] mx-auto">
           {activeTab === 'monitor' && (
             <LiveHeatmapView
               onOpenProtocolEdit={() => setIsProtocolOpen(true)}

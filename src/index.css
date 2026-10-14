@@ -30,73 +30,65 @@
 
 .font-display-hero {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 44px;
-  line-height: 48px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.font-headline-lg {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 28px;
-  line-height: 32px;
+  font-size: 32px;
+  line-height: 36px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
+.font-headline-lg {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
 .font-headline-md {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 22px;
-  line-height: 26px;
+  font-size: 16px;
+  line-height: 20px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
 .font-headline-sm {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 18px;
-  line-height: 22px;
+  font-size: 14px;
+  line-height: 18px;
   font-weight: 600;
 }
 
 .font-body-lg {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 17px;
-  line-height: 24px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
 }
 
 .font-body-md {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 15px;
-  line-height: 21px;
-  font-weight: 500;
-}
-
-.font-body-sm {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   line-height: 18px;
   font-weight: 500;
 }
 
+.font-body-sm {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  line-height: 15px;
+  font-weight: 500;
+}
+
 .font-label-timer {
   font-family: 'Space Mono', monospace;
-  font-size: 24px;
-  line-height: 28px;
+  font-size: 18px;
+  line-height: 22px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
 .font-label-mono-lg {
-  font-family: 'Space Mono', monospace;
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.font-label-mono-md {
   font-family: 'Space Mono', monospace;
   font-size: 13px;
   line-height: 17px;
@@ -104,12 +96,20 @@
   letter-spacing: 0.04em;
 }
 
-.font-label-mono-sm {
+.font-label-mono-md {
   font-family: 'Space Mono', monospace;
   font-size: 11px;
   line-height: 15px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
+}
+
+.font-label-mono-sm {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 /* Neo-brutalist clinical tactile button clicks */

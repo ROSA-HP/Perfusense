@@ -1,6 +1,6 @@
 {
-  "name": "FLIP. Clinical OS",
-  "description": "Hospital bedside pressure injury prevention and 64-channel piezoelectric mat telemetry operating system.",
+  "name": "Perfusense",
+  "description": "Continuous pressure injury prevention and 64-channel piezoelectric mat telemetry operating system.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

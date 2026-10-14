@@ -460,7 +460,7 @@ export const SensorHardwareView: React.FC<SensorHardwareViewProps> = ({
             <div className="flex items-center justify-between p-2.5 bg-[#ffffff] border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-xs">
               <div>
                 <div className="text-[#121c1b] font-bold">MCU FIRMWARE</div>
-                <div className="text-[#3f4947]">FLIP-OS v2.14-REV-C</div>
+                <div className="text-[#3f4947]">PERFUSENSE-OS v2.14-REV-C</div>
               </div>
               <span className="text-[#1d635d] font-bold">UP TO DATE</span>
             </div>
@@ -525,48 +525,70 @@ export const SensorHardwareView: React.FC<SensorHardwareViewProps> = ({
       </div>
 
       {/* Bottom Row: Dynamic Noise Floor & UART Event Log */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
         {/* Equalizer Telemetry */}
-        <div className="bg-[#ffffff] p-5 border-[4px] border-[#121c1b] shadow-[5px_5px_0px_#121c1b] flex flex-col justify-between">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="material-symbols-outlined text-[#1d635d] text-[22px]">equalizer</span>
-            <span className="font-headline-sm uppercase text-[#121c1b] font-bold text-sm sm:text-base">
-              DYNAMIC NOISE FLOOR TELEMETRY (128Hz REAL-TIME)
+        <div className="bg-[#ffffff] p-5 sm:p-6 border-[4px] border-[#121c1b] shadow-[5px_5px_0px_#121c1b] flex flex-col justify-between min-h-[280px]">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#1d635d] text-[24px]">equalizer</span>
+              <span className="font-headline-sm uppercase text-[#121c1b] font-bold text-sm sm:text-base">
+                DYNAMIC NOISE FLOOR TELEMETRY (128Hz REAL-TIME)
+              </span>
+            </div>
+            <span className="font-label-mono-sm text-[#1d635d] bg-[#ebf6f4] px-2 py-0.5 border border-[#121c1b] font-bold text-[10px]">
+              LIVE SENSORS
             </span>
           </div>
-          <div className="w-full h-28 bg-[#EDE8DC] border-[2px] border-[#121c1b] flex items-end p-2 gap-1 overflow-hidden shadow-inner">
+
+          {/* Dynamic Equalizer Canvas with generous flexible height */}
+          <div className="w-full min-h-[170px] h-44 sm:h-52 bg-[#EDE8DC] border-[3px] border-[#121c1b] flex items-end p-3 gap-1.5 sm:gap-2 overflow-hidden shadow-inner">
             {eqHeights.map((h, i) => {
-              let barColor = 'bg-[#1d635d]/70';
-              if (h > 70) barColor = 'bg-[#fe9572]';
-              if (h > 85) barColor = 'bg-[#8b2635]';
+              let barColor = 'bg-[#1d635d]';
+              if (h > 68) barColor = 'bg-[#fe9572]';
+              if (h > 84) barColor = 'bg-[#8b2635]';
 
               return (
                 <div
                   key={i}
-                  className={`w-full transition-all duration-300 ${barColor}`}
+                  className={`w-full transition-all duration-300 rounded-none border-t-2 border-[#121c1b] ${barColor}`}
                   style={{ height: `${h}%` }}
+                  title={`Band ${i + 1}: ${h}% signal`}
                 ></div>
               );
             })}
           </div>
-          <div className="flex justify-between font-label-mono-sm text-[#3f4947] mt-2 font-bold text-[11px]">
+
+          <div className="flex justify-between font-label-mono-sm text-[#3f4947] mt-3 font-bold text-[11px]">
             <span>-90 dBm (MIN DETECTABLE)</span>
-            <span className="text-[#1d635d]">PEAK DRIFT: +1.4 dB</span>
+            <span className="text-[#1d635d] font-bold">PEAK DRIFT: +1.4 dB</span>
             <span>-50 dBm (CEILING)</span>
           </div>
         </div>
 
         {/* Hardware Event Log (UART Interface) */}
-        <div className="bg-[#ffffff] p-5 border-[4px] border-[#121c1b] shadow-[5px_5px_0px_#121c1b] flex flex-col justify-between">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="material-symbols-outlined text-[#1d635d] text-[22px]">terminal</span>
-            <span className="font-headline-sm uppercase text-[#121c1b] font-bold text-sm sm:text-base">
-              HARDWARE EVENT LOG (UART INTERFACE)
-            </span>
+        <div className="bg-[#ffffff] p-5 sm:p-6 border-[4px] border-[#121c1b] shadow-[5px_5px_0px_#121c1b] flex flex-col justify-between min-h-[280px]">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#1d635d] text-[24px]">terminal</span>
+              <span className="font-headline-sm uppercase text-[#121c1b] font-bold text-sm sm:text-base">
+                HARDWARE EVENT LOG (UART INTERFACE)
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                appendLog('FLUSH: UART transmission buffer reset.');
+                showToast('UART BUFFER FLUSHED', 'Hardware stream buffer re-synchronized.');
+              }}
+              className="px-2 py-0.5 bg-[#ebf6f4] hover:bg-[#dfeae8] text-[#121c1b] font-label-mono-sm border border-[#121c1b] text-[10px] font-bold uppercase neo-btn"
+            >
+              CLEAR BUFFER
+            </button>
           </div>
-          <div className="w-full h-28 bg-[#121c1b] text-[#f1fcf9] p-3 font-label-mono-sm text-xs overflow-y-auto space-y-1.5 border-[2px] border-[#121c1b]">
+
+          {/* UART Terminal Box with generous flexible height */}
+          <div className="w-full min-h-[170px] h-44 sm:h-52 bg-[#121c1b] text-[#f1fcf9] p-3.5 font-label-mono-sm text-xs overflow-y-auto space-y-2 border-[3px] border-[#121c1b] shadow-inner">
             {logs.map((log, idx) => (
-              <div key={idx} className="leading-tight">
+              <div key={idx} className="leading-snug">
                 {log.includes('PZ-ARRAY') || log.includes('BLE-TETHER') ? (
                   <span className="text-[#adefe7]">{log}</span>
                 ) : log.includes('TEMP') || log.includes('HYSTERESIS') ? (
@@ -577,9 +599,10 @@ export const SensorHardwareView: React.FC<SensorHardwareViewProps> = ({
               </div>
             ))}
           </div>
-          <div className="flex justify-between font-label-mono-sm text-[#3f4947] mt-2 font-bold text-[11px]">
+
+          <div className="flex justify-between font-label-mono-sm text-[#3f4947] mt-3 font-bold text-[11px]">
             <span>BUFFER: 4096 BYTES</span>
-            <span className="text-[#1d635d]">STREAM ACTIVE // 115200 BAUD</span>
+            <span className="text-[#1d635d] font-bold">STREAM ACTIVE // 115200 BAUD</span>
           </div>
         </div>
       </div>
