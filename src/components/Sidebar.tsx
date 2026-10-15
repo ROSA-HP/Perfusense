@@ -39,7 +39,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, []);
 
-  const navItems = [
+  const navItems: Array<{
+    id: ActiveTab;
+    label: string;
+    icon: string;
+    badge?: string;
+    badgeColor?: string;
+  }> = [
     {
       id: 'monitor' as ActiveTab,
       label: 'Monitor',
@@ -54,17 +60,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'turn-schedule' as ActiveTab,
-      label: 'Turn Schedule',
-      icon: 'timer',
-      badge: 'DUE NOW',
-      badgeColor: 'bg-[#8b2635] text-white',
+      label: 'Pressure History',
+      icon: 'history',
+      badge: 'LOGS',
     },
     {
       id: 'peak-alerts' as ActiveTab,
-      label: 'Peak Alerts',
-      icon: 'warning',
-      badge: '1 ACTIVE',
-      badgeColor: 'bg-[#d97757] text-white',
+      label: 'Zone Timers',
+      icon: 'hourglass_empty',
+      badge: '6 ZONES',
     },
     {
       id: 'sensor-mat-hardware' as ActiveTab,
@@ -82,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className="fixed left-0 top-[84px] sm:top-[92px] bottom-0 w-4 sm:w-5 z-30 cursor-pointer group"
+        className="fixed left-0 top-14 sm:top-16 bottom-0 w-4 sm:w-5 z-30 cursor-pointer group"
         title="Hover to open navigation menu"
       >
         {/* Subtle Edge Indicator Bar */}
@@ -110,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <aside
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className={`fixed left-0 top-[84px] sm:top-[92px] bottom-0 w-52 sm:w-56 bg-[#ebf6f4] border-r-[3px] border-[#121c1b] shadow-[4px_4px_0px_#121c1b] z-40 flex flex-col justify-between p-2.5 overflow-y-auto select-none transition-transform duration-200 ease-out ${
+        className={`fixed left-0 top-14 sm:top-16 bottom-0 w-52 sm:w-56 bg-[#ebf6f4] border-r-[3px] border-[#121c1b] shadow-[4px_4px_0px_#121c1b] z-40 flex flex-col justify-between p-2.5 overflow-y-auto select-none transition-transform duration-200 ease-out ${
           isVisible ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

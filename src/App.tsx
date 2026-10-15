@@ -82,11 +82,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f1fcf9] text-[#121c1b] relative font-body-md">
-      {/* Top Header with live marquee */}
+      {/* Top Header */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        heatingUpAlert={true}
       />
 
       {/* Fixed Left Sidebar */}
@@ -98,7 +97,7 @@ export default function App() {
       />
 
       {/* Main Content Area - Maximized Canvas */}
-      <div className="w-full px-3 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16 sm:pb-24">
+      <div className="w-full px-3 sm:px-6 lg:px-8 pt-18 sm:pt-20 pb-16 sm:pb-24">
         <main className="w-full max-w-[1720px] mx-auto">
           {activeTab === 'monitor' && (
             <LiveHeatmapView

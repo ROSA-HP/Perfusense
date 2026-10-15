@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ZoneTimer } from '../types';
 
 interface LiveHeatmapViewProps {
   onOpenProtocolEdit: () => void;
@@ -8,7 +7,6 @@ interface LiveHeatmapViewProps {
 }
 
 export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
-  onOpenProtocolEdit,
   onOpenTurnLog,
   showToast,
 }) => {
@@ -24,7 +22,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
     [0, 0, 2, 1, 0, 0, 0, 0], // Row 8: Heels
   ];
 
-  const [matrix, setMatrix] = useState<number[][]>(initialMatrix);
+  const [matrix] = useState<number[][]>(initialMatrix);
   const [selectedCell, setSelectedCell] = useState<{ r: number; c: number; val: number } | null>({
     r: 3,
     c: 2,
@@ -33,23 +31,9 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
 
   const [turnCompleted, setTurnCompleted] = useState<boolean>(false);
   const [snoozeActive, setSnoozeActive] = useState<boolean>(false);
-  const [timers, setTimers] = useState<ZoneTimer[]>([
-    { name: 'SACRUM', elapsedMin: 112, limitMin: 120, isNearLimit: true },
-    { name: 'HEELS', elapsedMin: 42, limitMin: 90 },
-    { name: 'LEFT HIP', elapsedMin: 78, limitMin: 120, isElevated: true },
-    { name: 'SHOULDERS', elapsedMin: 35, limitMin: 120 },
-    { name: 'RIGHT HIP', elapsedMin: 10, limitMin: 120 },
-    { name: 'ELBOWS', elapsedMin: 18, limitMin: 120 },
-  ]);
 
   const handleDoneTurned = () => {
     setTurnCompleted(true);
-    // Reset sacrum timer
-    setTimers((prev) =>
-      prev.map((t) =>
-        t.name === 'SACRUM' ? { ...t, elapsedMin: 4, isNearLimit: false } : t
-      )
-    );
     showToast('REPOSITION LOGGED: 09:42', 'Patient turned to Right 30° Lateral. Epic flowsheet auto-synced.');
     setTimeout(() => {
       setTurnCompleted(false);
@@ -65,11 +49,12 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
   };
 
   const handleExportAudit = () => {
-    const csvContent = "data:text/csv;charset=utf-8,Timestamp,Patient,Zone,PeakMmHg,RN\n09:42,Eleanor Vance,Sacrum,68.4,RN K. Nygård\n08:30,Eleanor Vance,Trochanter,28.0,RN T. Kowalski";
+    const csvContent =
+      'data:text/csv;charset=utf-8,Timestamp,Patient,Zone,PeakMmHg,RN\n09:42,Eleanor Vance,Sacrum,68.4,RN K. Nygård\n08:30,Eleanor Vance,Trochanter,28.0,RN T. Kowalski';
     const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "Perfusense_EHR_Bed07_Audit.csv");
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'Perfusense_EHR_Bed07_Audit.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -88,7 +73,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
   ];
 
   return (
-    <div className="flex flex-col gap-4 select-none w-full">
+    <div className="flex flex-col gap-4 select-none w-full max-w-[1400px] mx-auto">
       {/* Top Metadata Status Strip */}
       <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b-[2px] border-[#121c1b]">
         <div className="flex items-center flex-wrap gap-2">
@@ -111,101 +96,100 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
         </div>
       </div>
 
-      {/* TOP GRID ROW: Heatmap & Zone Timers */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        {/* LEFT CARD: LIVE HEATMAP (7 Cols) */}
-        <div className="lg:col-span-7 bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-3.5 sm:p-4 flex flex-col gap-3.5 relative">
-          {/* Card Header with Sticker */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-[#1d635d]"></div>
-              <h2 className="font-headline-lg text-[#121c1b] tracking-tight uppercase text-sm sm:text-base font-bold">
-                LIVE HEATMAP
-              </h2>
-            </div>
-            {/* Sample Data Sticker */}
-            <div className="rotate-2 bg-[#f1fcf9] text-[#121c1b] border-[2px] border-dashed border-[#121c1b] shadow-[2px_2px_0px_#121c1b] px-2 py-0.5 font-label-mono-sm uppercase tracking-wider font-bold text-[9px]">
-              [SAMPLE DATA]
+      {/* FULL-WIDTH LIVE HEATMAP CARD (Zone Timers moved to Zones page) */}
+      <div className="w-full bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-4 sm:p-5 flex flex-col gap-4">
+        {/* Card Header without fake sample stickers */}
+        <div className="flex items-center justify-between pb-2 border-b-[2px] border-[#121c1b]">
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 bg-[#1d635d]"></div>
+            <h2 className="font-headline-lg text-[#121c1b] tracking-tight uppercase text-sm sm:text-base font-bold">
+              LIVE CONTACT PRESSURE HEATMAP
+            </h2>
+          </div>
+          <div className="font-label-mono-sm text-xs text-[#1d635d] font-bold">
+            BED 07 // CONTINUOUS MONITORING
+          </div>
+        </div>
+
+        {/* Heatmap Grid & Side Details in Expanded 2-Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          {/* Centered 8x8 Tactile Matrix */}
+          <div className="lg:col-span-6 flex flex-col items-center justify-center">
+            <div className="bg-[#ffffff] p-3 border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] w-full max-w-[360px]">
+              <div className="grid grid-cols-8 gap-1.5 aspect-square w-full">
+                {matrix.map((row, rIdx) =>
+                  row.map((cellVal, cIdx) => {
+                    const isSelected = selectedCell?.r === rIdx && selectedCell?.c === cIdx;
+
+                    let cellBg = 'bg-[#f1fcf9] border border-[#121c1b]/30';
+                    let content = null;
+
+                    if (cellVal === 1) {
+                      cellBg = 'bg-[#a3cfc9] border border-[#121c1b]';
+                    } else if (cellVal === 2) {
+                      cellBg = 'bg-[#1d635d] border border-[#121c1b]';
+                    } else if (cellVal === 3) {
+                      cellBg =
+                        'bg-[#8b2635] border-[2px] border-[#121c1b] ring-2 ring-[#d97757] relative flex items-center justify-center';
+                      content = <span className="w-1.5 h-1.5 bg-[#ffffff] rounded-full inline-block"></span>;
+                    }
+
+                    return (
+                      <button
+                        key={`${rIdx}-${cIdx}`}
+                        onClick={() => setSelectedCell({ r: rIdx, c: cIdx, val: cellVal })}
+                        className={`transition-transform hover:scale-110 cursor-pointer ${cellBg} ${
+                          isSelected ? 'ring-2 ring-[#1d635d] z-10' : ''
+                        }`}
+                        title={`Row ${rIdx + 1}, Col ${cIdx + 1} (${cellNames[rIdx]}) - Level: ${cellVal}`}
+                      >
+                        {content}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <div className="mt-2 text-center font-label-mono-sm text-[#3f4947] uppercase tracking-widest text-[10px] font-bold">
+                FOOT OF BED ↓
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-            {/* 8x8 Tactile Matrix */}
-            <div className="md:col-span-7 flex flex-col items-center justify-center">
-              <div className="bg-[#ffffff] p-2 border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] w-full max-w-[320px]">
-                <div className="grid grid-cols-8 gap-1 aspect-square w-full">
-                  {matrix.map((row, rIdx) =>
-                    row.map((cellVal, cIdx) => {
-                      const isSelected = selectedCell?.r === rIdx && selectedCell?.c === cIdx;
-                      
-                      // Render style based on pressure levels
-                      let cellBg = 'bg-[#f1fcf9] border border-[#121c1b]/30';
-                      let content = null;
-
-                      if (cellVal === 1) {
-                        cellBg = 'bg-[#a3cfc9] border border-[#121c1b]';
-                      } else if (cellVal === 2) {
-                        cellBg = 'bg-[#1d635d] border border-[#121c1b]';
-                      } else if (cellVal === 3) {
-                        cellBg = 'bg-[#8b2635] border-[2px] border-[#121c1b] ring-2 ring-[#d97757] relative flex items-center justify-center';
-                        content = <span className="w-1.5 h-1.5 bg-[#ffffff] rounded-full inline-block"></span>;
-                      }
-
-                      return (
-                        <button
-                          key={`${rIdx}-${cIdx}`}
-                          onClick={() => setSelectedCell({ r: rIdx, c: cIdx, val: cellVal })}
-                          className={`transition-transform hover:scale-110 cursor-pointer ${cellBg} ${
-                            isSelected ? 'ring-2 ring-[#1d635d] z-10' : ''
-                          }`}
-                          title={`Row ${rIdx + 1}, Col ${cIdx + 1} (${cellNames[rIdx]}) - Level: ${cellVal}`}
-                        >
-                          {content}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-                <div className="mt-1.5 text-center font-label-mono-sm text-[#3f4947] uppercase tracking-widest text-[9px] font-bold">
-                  FOOT OF BED ↓
-                </div>
+          {/* Side Telemetry Details */}
+          <div className="lg:col-span-6 flex flex-col gap-3">
+            {/* Position AI Detection Card */}
+            <div className="bg-[#ebf6f4] text-[#121c1b] p-3 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
+              <div className="font-label-mono-sm uppercase text-[#121c1b]/80 text-[10px] font-bold">
+                ESTIMATED PATIENT POSTURE
+              </div>
+              <div className="font-headline-sm text-[#1d635d] mt-0.5 uppercase tracking-tight font-bold text-sm">
+                RIGHT 30° LATERAL TILT
+              </div>
+              <div className="mt-1.5 font-label-mono-sm text-[#121c1b] bg-[#ffffff] px-2 py-0.5 border border-[#121c1b] inline-block font-bold text-[10px]">
+                CONFIDENCE: 94.2%
               </div>
             </div>
 
-            {/* Heatmap Meta & Legend Rail */}
-            <div className="md:col-span-5 flex flex-col gap-3">
-              {/* Position AI Guess Pill Card */}
-              <div className="bg-[#ebf6f4] text-[#121c1b] p-3 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
-                <div className="font-label-mono-sm uppercase text-[#121c1b]/80">
-                  POSITION (AI GUESS)
-                </div>
-                <div className="font-headline-sm text-[#1d635d] mt-0.5 uppercase tracking-tight font-bold">
-                  LEFT SIDE
-                </div>
-                <div className="mt-2 font-label-mono-sm text-[#121c1b] bg-[#ffffff] px-2 py-0.5 border-[2px] border-[#121c1b] inline-block font-bold">
-                  CONFIDENCE: 94.2%
-                </div>
+            {/* Discrete 4-Swatch Color-Blind Legend */}
+            <div className="bg-[#ffffff] border-[2px] border-[#121c1b] p-3 shadow-[2px_2px_0px_#121c1b] flex flex-col gap-1.5">
+              <div className="font-label-mono-sm text-[#121c1b] uppercase border-b border-[#121c1b] pb-1 font-bold text-[10px]">
+                PRESSURE RANGE LEGEND
               </div>
-
-              {/* Discrete 4-Swatch Color-Blind Legend */}
-              <div className="bg-[#ffffff] border-[3px] border-[#121c1b] p-3 shadow-[3px_3px_0px_#121c1b] flex flex-col gap-2">
-                <div className="font-label-mono-sm text-[#121c1b] uppercase border-b-[2px] border-[#121c1b] pb-1 font-bold">
-                  PRESSURE SWATCHES
-                </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
                 <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 bg-[#f1fcf9] border-[2px] border-[#121c1b] inline-block shrink-0"></span>
+                  <span className="w-4 h-4 bg-[#f1fcf9] border border-[#121c1b] inline-block shrink-0"></span>
                   <span className="font-label-mono-sm text-[#121c1b]">NONE (0-15 mmHg)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 bg-[#a3cfc9] border-[2px] border-[#121c1b] inline-block shrink-0"></span>
+                  <span className="w-4 h-4 bg-[#a3cfc9] border border-[#121c1b] inline-block shrink-0"></span>
                   <span className="font-label-mono-sm text-[#121c1b]">LIGHT (16-32 mmHg)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 bg-[#1d635d] border-[2px] border-[#121c1b] inline-block shrink-0"></span>
+                  <span className="w-4 h-4 bg-[#1d635d] border border-[#121c1b] inline-block shrink-0"></span>
                   <span className="font-label-mono-sm text-[#121c1b]">HEAVY (33-55 mmHg)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 bg-[#8b2635] border-[2px] border-[#121c1b] inline-block shrink-0 flex items-center justify-center">
+                  <span className="w-4 h-4 bg-[#8b2635] border border-[#121c1b] inline-block shrink-0 flex items-center justify-center">
                     <span className="w-1 h-1 bg-[#ffffff]"></span>
                   </span>
                   <span className="font-label-mono-sm text-[#8b2635] font-bold">
@@ -213,100 +197,27 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
                   </span>
                 </div>
               </div>
+            </div>
 
-              {/* Mat State Vector */}
-              <div className="border-[2px] border-[#121c1b] bg-[#ebf6f4] p-2.5 font-label-mono-sm text-[#121c1b] space-y-1">
-                <div>
-                  ACTIVE PIEZOS: <span className="font-bold text-[#1d635d]">64/64</span>
-                </div>
-                <div>
-                  PEAK FORCE: <span className="font-bold text-[#8b2635]">68.4 mmHg</span>
-                </div>
-                <div>
-                  HOT CELL LOC:{' '}
-                  <span className="font-bold">
-                    {selectedCell ? `R${selectedCell.r + 1}-C${selectedCell.c + 1} [${cellNames[selectedCell.r]}]` : 'R4-C3 [SACRUM]'}
-                  </span>
-                </div>
+            {/* Mat Pressure Vector Details */}
+            <div className="border-[2px] border-[#121c1b] bg-[#ebf6f4] p-3 font-label-mono-sm text-[#121c1b] space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span>ACTIVE PIEZOS:</span>
+                <span className="font-bold text-[#1d635d]">64/64 OPERATIONAL</span>
+              </div>
+              <div className="flex justify-between">
+                <span>PEAK CONTACT FORCE:</span>
+                <span className="font-bold text-[#8b2635]">68.4 mmHg (SACRUM)</span>
+              </div>
+              <div className="flex justify-between">
+                <span>SELECTED SENSOR:</span>
+                <span className="font-bold">
+                  {selectedCell
+                    ? `R${selectedCell.r + 1}-C${selectedCell.c + 1} [${cellNames[selectedCell.r]}]`
+                    : 'R4-C3 [SACRUM]'}
+                </span>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* RIGHT CARD: ZONE TIMERS (5 Cols) */}
-        <div className="lg:col-span-5 bg-[#ebf6f4] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-3.5 sm:p-4 flex flex-col justify-between">
-          <div>
-            {/* Title Row */}
-            <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b-[2px] border-[#121c1b]">
-              <h2 className="font-headline-lg text-[#121c1b] uppercase tracking-tight text-sm sm:text-base font-bold">
-                ZONE TIMERS
-              </h2>
-              <span className="font-label-mono-sm bg-[#ffffff] text-[#121c1b] border border-[#121c1b] px-2 py-0.5 font-bold shadow-[1px_1px_0px_#121c1b] text-[9px]">
-                LIMIT: 2.0H
-              </span>
-            </div>
-
-            {/* 6 Anatomical Rows */}
-            <div className="flex flex-col gap-2">
-              {timers.map((t) => {
-                const pct = Math.min(100, Math.round((t.elapsedMin / t.limitMin) * 100));
-                const isCritical = t.isNearLimit || pct >= 90;
-                const isWarning = t.isElevated || (pct >= 60 && pct < 90);
-
-                let barColor = 'bg-[#1d635d]';
-                let textColor = 'text-[#121c1b]';
-
-                if (isCritical) {
-                  barColor = 'bg-[#8b2635]';
-                  textColor = 'text-[#8b2635]';
-                } else if (isWarning) {
-                  barColor = 'bg-[#d97757]';
-                  textColor = 'text-[#d97757]';
-                }
-
-                return (
-                  <div
-                    key={t.name}
-                    className={`bg-[#ffffff] p-2 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] relative ${
-                      isCritical ? 'ring-1 ring-[#8b2635]' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`font-label-mono-md font-bold text-xs ${textColor}`}>
-                          {t.name}
-                        </span>
-                        {isCritical && (
-                          <span className="-rotate-2 bg-[#8b2635] text-[#ffffff] text-[8px] font-label-mono-sm px-1 py-0.2 border border-[#121c1b] shadow-[1px_1px_0px_#121c1b] uppercase font-bold">
-                            NEAR ITS LIMIT
-                          </span>
-                        )}
-                      </div>
-                      <span className={`font-label-mono-md font-bold text-[11px] ${textColor}`}>
-                        {t.elapsedMin} / {t.limitMin} MIN
-                      </span>
-                    </div>
-                    <div className="w-full h-3 bg-[#ebf6f4] border border-[#121c1b] overflow-hidden p-0.5">
-                      <div
-                        className={`h-full ${barColor} transition-all duration-500`}
-                        style={{ width: `${pct}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Footnote Text & Protocol Edit */}
-          <div className="mt-3 pt-2 border-t border-[#121c1b] font-label-mono-sm text-[10px] text-[#121c1b] flex items-center justify-between">
-            <span>* Limits are set with clinical staff.</span>
-            <button
-              onClick={onOpenProtocolEdit}
-              className="font-bold underline cursor-pointer hover:bg-[#ffffff] px-1.5 py-0.5 border border-transparent hover:border-[#121c1b] transition-all text-[10px]"
-            >
-              PROTOCOL EDIT
-            </button>
           </div>
         </div>
       </div>
@@ -314,12 +225,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
       {/* BOTTOM GRID ROW: Action Alert & 8-Hour History */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
         {/* BOTTOM LEFT: ACTION ALERT "FLIP TIME." (6 Cols) */}
-        <div className="lg:col-span-6 bg-[#8b2635] text-[#f1fcf9] border-[3px] border-[#121c1b] shadow-[4px_4px_0px_#121c1b] p-4 sm:p-5 relative flex flex-col justify-between">
-          {/* Urgent Tag Stamp */}
-          <div className="absolute -top-3 right-4 bg-[#f1fcf9] text-[#8b2635] border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] px-2 py-0.5 font-label-mono-sm uppercase font-bold text-[9px] rotate-2">
-            [ACTION REQUIRED: +8M REMAINING]
-          </div>
-
+        <div className="lg:col-span-6 bg-[#8b2635] text-[#f1fcf9] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-4 sm:p-5 relative flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2.5 mb-2">
               <div className="w-8 h-8 bg-[#f1fcf9] border-[2px] border-[#121c1b] flex items-center justify-center shrink-0 shadow-[2px_2px_0px_#121c1b]">
@@ -350,10 +256,10 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5 pt-1">
             <button
               onClick={handleDoneTurned}
-              className={`px-4 py-2 border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] font-headline-sm text-xs uppercase tracking-tight cursor-pointer transition-all flex items-center gap-2 neo-btn ${
+              className={`px-4 py-2 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-headline-sm text-xs uppercase tracking-tight cursor-pointer transition-all flex items-center gap-2 neo-btn ${
                 turnCompleted
                   ? 'bg-[#f1fcf9] text-[#121c1b]'
-                  : 'bg-[#d97757] text-[#ffffff] hover:shadow-[4px_4px_0px_#121c1b]'
+                  : 'bg-[#d97757] text-[#ffffff] hover:shadow-[3px_3px_0px_#121c1b]'
               }`}
             >
               <span className={`w-3 h-3 inline-block ${turnCompleted ? 'bg-[#121c1b]' : 'bg-[#ffffff]'}`}></span>
@@ -362,10 +268,10 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
 
             <button
               onClick={handleSnooze}
-              className={`px-4 py-2 border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] font-headline-sm text-xs uppercase tracking-tight cursor-pointer transition-all flex items-center gap-1.5 neo-btn ${
+              className={`px-4 py-2 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-headline-sm text-xs uppercase tracking-tight cursor-pointer transition-all flex items-center gap-1.5 neo-btn ${
                 snoozeActive
                   ? 'bg-[#a3cfc9] text-[#121c1b]'
-                  : 'bg-[#ffffff] text-[#121c1b] hover:shadow-[4px_4px_0px_#121c1b]'
+                  : 'bg-[#ffffff] text-[#121c1b] hover:shadow-[3px_3px_0px_#121c1b]'
               }`}
             >
               <span className="material-symbols-outlined text-[16px] text-[#121c1b]">
@@ -377,9 +283,9 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
         </div>
 
         {/* BOTTOM RIGHT: LAST 8 HOURS HISTORY (6 Cols) */}
-        <div className="lg:col-span-6 bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[4px_4px_0px_#121c1b] p-4 sm:p-5 flex flex-col justify-between">
+        <div className="lg:col-span-6 bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-4 sm:p-5 flex flex-col justify-between">
           <div>
-            {/* Header and Stickers */}
+            {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b-[2px] border-[#121c1b]">
               <div className="flex items-center gap-2">
                 <span className="font-headline-lg text-[#121c1b] uppercase tracking-tight text-sm sm:text-base font-bold">
@@ -387,10 +293,10 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="bg-[#121c1b] text-[#f1fcf9] border border-[#121c1b] px-2 py-0.5 font-label-mono-sm uppercase font-bold text-[9px] shadow-[1px_1px_0px_#121c1b]">
+                <span className="bg-[#121c1b] text-[#f1fcf9] border border-[#121c1b] px-2 py-0.5 font-label-mono-sm uppercase font-bold text-[9px]">
                   MAT ONLINE
                 </span>
-                <span className="rotate-1 bg-[#1d635d] text-[#ffffff] border border-[#121c1b] shadow-[2px_2px_0px_#121c1b] px-2 py-0.5 font-label-mono-sm font-bold uppercase text-[9px]">
+                <span className="bg-[#1d635d] text-[#ffffff] border border-[#121c1b] px-2 py-0.5 font-label-mono-sm font-bold uppercase text-[9px]">
                   6 ON-TIME TURNS
                 </span>
               </div>
@@ -434,7 +340,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
             </div>
           </div>
 
-          {/* Additional History Quick Telemetry Card */}
+          {/* Quick Telemetry Summary */}
           <div className="mt-3 pt-2 border-t border-[#121c1b] grid grid-cols-2 sm:grid-cols-3 gap-2">
             <div className="bg-[#ebf6f4] border border-[#121c1b] p-2 shadow-[1px_1px_0px_#121c1b]">
               <div className="font-label-mono-sm text-[9px] text-[#121c1b]/70 uppercase">CUMULATIVE SACRUM</div>
@@ -452,32 +358,27 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
         </div>
       </div>
 
-      {/* Ward Activity Sticker Strip - Expansive, flexible bottom container */}
-      <div className="w-full p-3.5 sm:p-4 bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[4px_4px_0px_#121c1b] flex flex-wrap items-center justify-between gap-3 min-h-[64px] mb-4">
-        <div className="flex items-center flex-wrap gap-2.5 flex-1 min-w-[260px]">
-          <span className="font-headline-sm text-xs text-[#121c1b] uppercase font-bold tracking-tight">
-            SHIFT LOG NOTE:
-          </span>
-          <span className="bg-[#1d635d] text-[#ffffff] border border-[#121c1b] px-2 py-0.5 font-label-mono-sm font-bold text-[9px] shadow-[1px_1px_0px_#121c1b]">
-            RN T. KOWALSKI VERIFIED 08:30
-          </span>
-          <span className="font-body-md text-xs text-[#121c1b] leading-snug">
-            Skin check clear over trochanters. Barrier ointment applied 07:15. Mat recalibrated.
+      {/* Bedside Quick Action Bar */}
+      <div className="w-full p-3 bg-[#ffffff] border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] flex flex-wrap items-center justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[#1d635d] text-[18px]">verified_user</span>
+          <span className="font-body-sm text-xs text-[#121c1b]">
+            Continuous contact monitoring active on BED 07. All readings sync to patient chart.
           </span>
         </div>
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2">
           <button
             onClick={onOpenTurnLog}
-            className="px-3 py-1.5 bg-[#f1fcf9] border-[2px] border-[#121c1b] font-label-mono-sm uppercase text-[#121c1b] font-bold text-[10px] shadow-[2px_2px_0px_#121c1b] hover:bg-[#a3cfc9] transition-all neo-btn whitespace-nowrap"
+            className="px-3 py-1.5 bg-[#f1fcf9] hover:bg-[#adefe7] border border-[#121c1b] font-label-mono-sm uppercase text-[#121c1b] font-bold text-[10px] shadow-[1px_1px_0px_#121c1b] transition-all neo-btn cursor-pointer whitespace-nowrap"
           >
-            VERIFY BEDSIDE TURN
+            LOG BEDSIDE TURN
           </button>
           <button
             onClick={handleExportAudit}
-            className="px-3 py-1.5 bg-[#1d635d] text-white border-[2px] border-[#121c1b] font-label-mono-sm uppercase font-bold text-[10px] shadow-[2px_2px_0px_#121c1b] hover:bg-[#121c1b] transition-all neo-btn flex items-center gap-1.5 whitespace-nowrap"
+            className="px-3 py-1.5 bg-[#1d635d] hover:bg-[#121c1b] text-white border border-[#121c1b] font-label-mono-sm uppercase font-bold text-[10px] shadow-[1px_1px_0px_#121c1b] transition-all neo-btn flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-[15px]">download</span>
-            <span>EXPORT EHR AUDIT</span>
+            <span>EXPORT RECORD</span>
           </button>
         </div>
       </div>
