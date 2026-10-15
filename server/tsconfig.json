@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "lib": ["ES2022"]
+  },
+  "include": ["./**/*.ts", "../src/types.ts", "../src/data/mockData.ts"],
+  "exclude": ["node_modules"]
+}
