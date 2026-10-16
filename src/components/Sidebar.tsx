@@ -6,6 +6,8 @@ interface SidebarProps {
   setActiveTab: (tab: ActiveTab) => void;
   selectedPod: string;
   setSelectedPod: (pod: string) => void;
+  isOpenControlled?: boolean;
+  onCloseControlled?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -13,23 +15,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   selectedPod,
   setSelectedPod,
+  isOpenControlled,
+  onCloseControlled,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync controlled state when changed
+  useEffect(() => {
+    if (typeof isOpenControlled === 'boolean') {
+      setInternalIsOpen(isOpenControlled);
+    }
+  }, [isOpenControlled]);
+
+  const closeSidebar = () => {
+    setIsPinned(false);
+    setInternalIsOpen(false);
+    if (onCloseControlled) {
+      onCloseControlled();
+    }
+  };
 
   const handleMouseEnter = () => {
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
     }
-    setIsOpen(true);
+    setInternalIsOpen(true);
   };
 
   const handleMouseLeave = () => {
     if (isPinned) return;
     hoverTimeoutRef.current = setTimeout(() => {
-      setIsOpen(false);
+      setInternalIsOpen(false);
+      if (onCloseControlled) onCloseControlled();
     }, 280);
   };
 
@@ -48,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }> = [
     {
       id: 'monitor' as ActiveTab,
-      label: 'Monitor',
+      label: 'Live Heatmap',
       icon: 'sensors',
       badge: 'LIVE',
     },
@@ -78,27 +98,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  const isVisible = isOpen || isPinned;
+  const isVisible = internalIsOpen || isPinned;
 
   return (
     <>
-      {/* Far-Left Screen Edge Hover Sensor Zone - Starts strictly BELOW navbar */}
+      {/* Mobile Backdrop Overlay - closes sidebar when tapping outside */}
+      {isVisible && (
+        <div
+          onClick={closeSidebar}
+          className="fixed inset-0 bg-[#121c1b]/60 z-40 backdrop-blur-[1px] md:hidden transition-opacity"
+          aria-label="Close navigation overlay"
+        />
+      )}
+
+      {/* Desktop Far-Left Screen Edge Hover Sensor Zone - Starts strictly BELOW navbar */}
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className="fixed left-0 top-14 sm:top-16 bottom-0 w-4 sm:w-5 z-30 cursor-pointer group"
+        className="hidden md:block fixed left-0 top-14 sm:top-16 bottom-0 w-4 sm:w-5 z-30 cursor-pointer group"
         title="Hover to open navigation menu"
       >
-        {/* Subtle Edge Indicator Bar */}
         <div className="absolute inset-y-0 left-0 w-1 bg-[#1d635d]/40 group-hover:bg-[#1d635d] group-hover:w-1.5 transition-all duration-200" />
       </div>
 
-      {/* Persistent Tactile Tab Handle on Left Edge when Minimized */}
+      {/* Desktop Persistent Tactile Tab Handle on Left Edge when Minimized */}
       {!isVisible && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => setInternalIsOpen(true)}
           onMouseEnter={handleMouseEnter}
-          className="fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-[#1d635d] hover:bg-[#121c1b] text-white border-[2px] border-[#121c1b] border-l-0 shadow-[2px_2px_0px_#121c1b] py-2 px-1 rounded-r-md flex flex-col items-center gap-1 cursor-pointer transition-all hover:translate-x-0.5 select-none"
+          className="hidden md:flex fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-[#1d635d] hover:bg-[#121c1b] text-white border-[2px] border-[#121c1b] border-l-0 shadow-[2px_2px_0px_#121c1b] py-2 px-1 rounded-r-md flex-col items-center gap-1 cursor-pointer transition-all hover:translate-x-0.5 select-none"
           title="Click or hover to open Navigation"
         >
           <span className="material-symbols-outlined text-[15px]">
@@ -110,32 +138,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       )}
 
-      {/* Minimized / Flyout Sidebar Container - Positioned flush below navbar */}
+      {/* Minimized / Flyout Sidebar Container */}
       <aside
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className={`fixed left-0 top-14 sm:top-16 bottom-0 w-52 sm:w-56 bg-[#ebf6f4] border-r-[3px] border-[#121c1b] shadow-[4px_4px_0px_#121c1b] z-40 flex flex-col justify-between p-2.5 overflow-y-auto select-none transition-transform duration-200 ease-out ${
+        className={`fixed left-0 top-0 md:top-14 sm:md:top-16 bottom-0 w-64 sm:w-60 bg-[#ebf6f4] border-r-[3px] border-[#121c1b] shadow-[6px_0px_0px_#121c1b] md:shadow-[4px_4px_0px_#121c1b] z-50 flex flex-col justify-between p-3 overflow-y-auto select-none transition-transform duration-200 ease-out ${
           isVisible ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex flex-col gap-3">
-          {/* Top Bar inside Sidebar: Title & Controls (NO logo, NO project name) */}
+          {/* Top Bar inside Sidebar: Title & Controls */}
           <div className="flex items-center justify-between pb-2 border-b-[2px] border-[#121c1b]">
             <div className="flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[17px] text-[#1d635d]">
-                menu
+              <span className="material-symbols-outlined text-[18px] text-[#1d635d]">
+                local_hospital
               </span>
               <span className="font-headline-sm text-xs uppercase font-bold text-[#121c1b] tracking-wider">
-                NAVIGATION
+                WARD NAVIGATION
               </span>
             </div>
 
             <div className="flex items-center gap-1">
-              {/* Pin / Keep Open Toggle */}
+              {/* Pin / Keep Open Toggle (Desktop only) */}
               <button
                 onClick={() => setIsPinned(!isPinned)}
-                title={isPinned ? 'Unpin sidebar (auto-hide on mouse leave)' : 'Pin sidebar open'}
-                className={`p-1 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] transition-all cursor-pointer ${
+                title={isPinned ? 'Unpin sidebar' : 'Pin sidebar open'}
+                className={`hidden md:block p-1 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] transition-all cursor-pointer ${
                   isPinned
                     ? 'bg-[#1d635d] text-white'
                     : 'bg-[#ffffff] text-[#121c1b] hover:bg-[#dfeae8]'
@@ -148,34 +176,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {/* Close Button */}
               <button
-                onClick={() => {
-                  setIsPinned(false);
-                  setIsOpen(false);
-                }}
-                title="Collapse sidebar"
-                className="p-1 border-[2px] border-[#121c1b] bg-[#ffffff] hover:bg-[#dfeae8] shadow-[1px_1px_0px_#121c1b] transition-all cursor-pointer"
+                onClick={closeSidebar}
+                title="Close drawer"
+                className="p-1 border-[2px] border-[#121c1b] bg-[#ffffff] hover:bg-[#dfeae8] shadow-[1px_1px_0px_#121c1b] transition-all cursor-pointer flex items-center justify-center"
               >
-                <span className="material-symbols-outlined text-[14px]">
-                  chevron_left
+                <span className="material-symbols-outlined text-[16px] text-[#121c1b]">
+                  close
                 </span>
               </button>
             </div>
           </div>
 
           {/* Care Unit Location Selector */}
-          <div className="p-2 border-[2px] border-[#121c1b] bg-[#ffffff] shadow-[2px_2px_0px_#121c1b]">
+          <div className="p-2.5 border-[2px] border-[#121c1b] bg-[#ffffff] shadow-[2px_2px_0px_#121c1b]">
             <div className="flex items-center justify-between mb-1">
               <span className="font-label-mono-sm text-[#3f4947] uppercase tracking-wider text-[10px] font-bold">
-                ASSIGNED LOCATION
+                ASSIGNED UNIT & POD
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-[#1d635d] animate-pulse"></span>
             </div>
-            <div className="flex items-center justify-between bg-[#f1fcf9] px-2 py-1 border border-[#121c1b]">
+            <div className="flex items-center justify-between bg-[#f1fcf9] px-2 py-1.5 border border-[#121c1b]">
               <select
                 value={selectedPod}
                 onChange={(e) => setSelectedPod(e.target.value)}
                 aria-label="Assigned Location"
-                className="bg-transparent font-label-mono-md text-[11px] text-[#121c1b] font-bold outline-none cursor-pointer w-full"
+                className="bg-transparent font-label-mono-md text-xs text-[#121c1b] font-bold outline-none cursor-pointer w-full"
               >
                 <option value="BED 07 / ICU-POD-3">BED 07 / ICU-POD-3</option>
                 <option value="BED 03 / ICU-POD-1">BED 03 / ICU-POD-1</option>
@@ -194,25 +219,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={item.id}
                   onClick={() => {
                     setActiveTab(item.id);
-                    if (!isPinned) {
-                      setIsOpen(false);
-                    }
+                    closeSidebar();
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 border-[2px] border-[#121c1b] font-headline-sm text-xs uppercase transition-all text-left cursor-pointer ${
+                  className={`w-full flex items-center justify-between px-3 py-2 border-[2px] border-[#121c1b] font-headline-sm text-xs uppercase transition-all text-left cursor-pointer neo-btn ${
                     isActive
-                      ? 'bg-[#1d635d] text-[#f1fcf9] shadow-[2px_2px_0px_#121c1b] -translate-x-0.5 -translate-y-0.5'
+                      ? 'bg-[#1d635d] text-[#f1fcf9] shadow-[2px_2px_0px_#121c1b]'
                       : 'bg-[#ffffff] text-[#121c1b] shadow-[1px_1px_0px_#121c1b] hover:bg-[#dfeae8]'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[16px]">
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[18px]">
                       {item.icon}
                     </span>
-                    <span className="font-bold text-[11px] sm:text-xs">{item.label}</span>
+                    <span className="font-bold text-xs">{item.label}</span>
                   </div>
                   {item.badge && (
                     <span
-                      className={`font-label-mono-sm px-1 py-0.2 text-[8px] border border-[#121c1b] font-bold ${
+                      className={`font-label-mono-sm px-1.5 py-0.5 text-[8px] border border-[#121c1b] font-bold ${
                         item.badgeColor || (isActive ? 'bg-[#adefe7] text-[#00201d]' : 'bg-[#ebf6f4] text-[#121c1b]')
                       }`}
                     >
@@ -226,20 +249,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Hardware link & Protocol Status footer */}
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-[#121c1b]/30">
-          <div className="p-1.5 border border-[#121c1b] bg-[#ffffff] shadow-[1px_1px_0px_#121c1b]">
+        <div className="flex flex-col gap-2 pt-2 border-t border-[#121c1b]/30">
+          <div className="p-2 border border-[#121c1b] bg-[#ffffff] shadow-[1px_1px_0px_#121c1b]">
             <div className="font-label-mono-sm uppercase text-[#3f4947] text-[9px]">HARDWARE LINK</div>
             <div className="flex items-center justify-between mt-0.5">
-              <span className="font-label-mono-md text-[10px] text-[#1d635d] font-bold">BLE: 100%</span>
+              <span className="font-label-mono-md text-[10px] text-[#1d635d] font-bold">BLE: 100% SIGNAL</span>
               <span className="w-1.5 h-1.5 rounded-full bg-[#1d635d] animate-ping"></span>
             </div>
           </div>
 
-          <div className="p-1.5 border border-[#121c1b] bg-[#e5f0ee] shadow-[1px_1px_0px_#121c1b]">
+          <div className="p-2 border border-[#121c1b] bg-[#e5f0ee] shadow-[1px_1px_0px_#121c1b]">
             <div className="font-label-mono-sm uppercase text-[#3f4947] text-[9px]">PROTOCOL STATUS</div>
-            <div className="flex items-center gap-1 mt-0.5">
+            <div className="flex items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 bg-[#1d635d] border border-[#121c1b]"></span>
-              <span className="font-label-mono-md text-[10px] text-[#121c1b] font-bold">Q2H OFFLOAD</span>
+              <span className="font-label-mono-md text-[10px] text-[#121c1b] font-bold">Q2H ROTATIONAL OFFLOAD</span>
             </div>
           </div>
         </div>

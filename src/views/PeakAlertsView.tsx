@@ -54,40 +54,40 @@ export const PeakAlertsView: React.FC<PeakAlertsViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-4 select-none w-full max-w-[1400px] mx-auto">
+    <div className="flex flex-col gap-3.5 sm:gap-4 select-none w-full max-w-[1400px] mx-auto">
       {/* Top Header & Clinical Policy Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#EDE8DC] p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#EDE8DC] p-3 sm:p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-3.5 h-3.5 bg-[#1d635d]"></span>
-            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-base sm:text-lg">
+            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-sm sm:text-lg">
               ANATOMICAL ZONE TIMERS
             </h1>
           </div>
-          <p className="font-body-sm text-[#3f4947] text-xs mt-0.5">
+          <p className="font-body-sm text-[#3f4947] text-[11px] sm:text-xs mt-0.5">
             BED 07 // Real-time continuous tissue dwell monitoring across 6 critical pressure loci.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="bg-[#ffffff] text-[#121c1b] font-label-mono-sm px-2.5 py-1 border-[2px] border-[#121c1b] uppercase text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
-            WARD POLICY: 2.0H CADENCE
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <span className="bg-[#ffffff] text-[#121c1b] font-label-mono-sm px-2 py-1 border-[2px] border-[#121c1b] uppercase text-[9px] sm:text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
+            WARD: 2.0H CADENCE
           </span>
-          <span className="bg-[#1d635d] text-white font-label-mono-sm px-2.5 py-1 border-[2px] border-[#121c1b] uppercase text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
-            BRADEN SCORE: 12 (HIGH RISK)
+          <span className="bg-[#1d635d] text-white font-label-mono-sm px-2 py-1 border-[2px] border-[#121c1b] uppercase text-[9px] sm:text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
+            BRADEN: 12 (HIGH)
           </span>
           <button
             onClick={onOpenThresholds}
-            className="bg-[#ffffff] hover:bg-[#dfeae8] text-[#121c1b] font-label-mono-sm px-3 py-1 border-[2px] border-[#121c1b] uppercase text-[10px] font-bold shadow-[2px_2px_0px_#121c1b] neo-btn flex items-center gap-1 cursor-pointer"
+            className="bg-[#ffffff] hover:bg-[#dfeae8] text-[#121c1b] font-label-mono-sm px-2.5 sm:px-3 py-1 border-[2px] border-[#121c1b] uppercase text-[9px] sm:text-[10px] font-bold shadow-[2px_2px_0px_#121c1b] neo-btn flex items-center gap-1 cursor-pointer"
           >
             <span className="material-symbols-outlined text-[14px]">tune</span>
-            <span>CUSTOMIZE LIMITS</span>
+            <span>LIMITS</span>
           </button>
         </div>
       </div>
 
       {/* Main 6 Anatomical Zone Dwell Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         {timers.map((t) => {
           const pct = Math.min(100, Math.round((t.elapsedMin / t.limitMin) * 100));
           const remainingMin = Math.max(0, t.limitMin - t.elapsedMin);
@@ -114,31 +114,31 @@ export const PeakAlertsView: React.FC<PeakAlertsViewProps> = ({
           return (
             <div
               key={t.name}
-              className={`bg-[#ffffff] border-[3px] ${borderStyle} p-4 shadow-[3px_3px_0px_#121c1b] flex flex-col justify-between gap-3`}
+              className={`bg-[#ffffff] border-[3px] ${borderStyle} p-3 sm:p-4 shadow-[3px_3px_0px_#121c1b] flex flex-col justify-between gap-2.5 sm:gap-3`}
             >
               <div>
                 {/* Zone Header */}
                 <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#121c1b]/30">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[#1d635d] text-[20px]">
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                    <span className="material-symbols-outlined text-[#1d635d] text-[18px] sm:text-[20px] shrink-0">
                       radio_button_checked
                     </span>
-                    <span className="font-headline-sm font-bold text-sm text-[#121c1b]">
+                    <span className="font-headline-sm font-bold text-xs sm:text-sm text-[#121c1b] truncate">
                       {t.name}
                     </span>
                   </div>
-                  <span className={`font-label-mono-sm px-2 py-0.5 border border-[#121c1b] text-[10px] font-bold ${badgeBg}`}>
+                  <span className={`font-label-mono-sm px-2 py-0.5 border border-[#121c1b] text-[9px] sm:text-[10px] font-bold shrink-0 ${badgeBg}`}>
                     {statusLabel}
                   </span>
                 </div>
 
                 {/* Dwell Metrics */}
-                <div className="flex items-baseline justify-between mt-3 mb-1">
+                <div className="flex items-baseline justify-between mt-2.5 sm:mt-3 mb-1">
                   <div>
-                    <span className="font-label-mono-sm text-[10px] text-[#3f4947] uppercase block">
+                    <span className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase block">
                       ELAPSED DWELL
                     </span>
-                    <span className="font-headline-lg font-bold text-lg text-[#121c1b]">
+                    <span className="font-headline-lg font-bold text-base sm:text-lg text-[#121c1b]">
                       {t.elapsedMin}{' '}
                       <span className="text-xs font-normal text-[#3f4947]">
                         / {t.limitMin} MIN
@@ -146,17 +146,17 @@ export const PeakAlertsView: React.FC<PeakAlertsViewProps> = ({
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="font-label-mono-sm text-[10px] text-[#3f4947] uppercase block">
+                    <span className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase block">
                       REMAINING
                     </span>
-                    <span className={`font-headline-lg font-bold text-lg ${isCritical ? 'text-[#8b2635]' : 'text-[#1d635d]'}`}>
+                    <span className={`font-headline-lg font-bold text-base sm:text-lg ${isCritical ? 'text-[#8b2635]' : 'text-[#1d635d]'}`}>
                       {remainingMin} MIN
                     </span>
                   </div>
                 </div>
 
                 {/* Progress Bar */}
-                <div className="w-full h-3.5 bg-[#ebf6f4] border-[2px] border-[#121c1b] overflow-hidden p-0.5 mt-1">
+                <div className="w-full h-3 sm:h-3.5 bg-[#ebf6f4] border-[2px] border-[#121c1b] overflow-hidden p-0.5 mt-1">
                   <div
                     className={`h-full ${barColor} transition-all duration-500`}
                     style={{ width: `${pct}%` }}
@@ -171,9 +171,9 @@ export const PeakAlertsView: React.FC<PeakAlertsViewProps> = ({
                 </span>
                 <button
                   onClick={() => handleResetZone(t.name)}
-                  className="px-3 py-1 bg-[#f1fcf9] hover:bg-[#adefe7] text-[#121c1b] border border-[#121c1b] shadow-[1px_1px_0px_#121c1b] font-label-mono-sm text-[10px] font-bold uppercase transition-all neo-btn cursor-pointer"
+                  className="px-2.5 sm:px-3 py-1.5 bg-[#f1fcf9] hover:bg-[#adefe7] text-[#121c1b] border border-[#121c1b] shadow-[1px_1px_0px_#121c1b] font-label-mono-sm text-[10px] font-bold uppercase transition-all neo-btn cursor-pointer min-h-[34px] flex items-center justify-center"
                 >
-                  OFFLOAD ZONE (RESET)
+                  OFFLOAD (RESET)
                 </button>
               </div>
             </div>
@@ -182,17 +182,17 @@ export const PeakAlertsView: React.FC<PeakAlertsViewProps> = ({
       </div>
 
       {/* Global Actions Footer */}
-      <div className="bg-[#ffffff] p-3.5 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-[#ffffff] p-3 sm:p-3.5 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-[#1d635d]">info</span>
+          <span className="material-symbols-outlined text-[#1d635d] shrink-0">info</span>
           <span className="font-body-sm text-xs text-[#121c1b]">
             Dwell timers tick automatically based on piezocapacitive contact load thresholds (&gt;15 mmHg).
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={handleResetAll}
-            className="px-4 py-2 bg-[#1d635d] hover:bg-[#121c1b] text-white border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-xs font-bold uppercase transition-all neo-btn cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-[#1d635d] hover:bg-[#121c1b] text-white border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-xs font-bold uppercase transition-all neo-btn cursor-pointer text-center"
           >
             RESET ALL 6 ZONES
           </button>

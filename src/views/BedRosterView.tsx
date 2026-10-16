@@ -39,46 +39,46 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-4 select-none w-full max-w-[1400px] mx-auto">
+    <div className="flex flex-col gap-3.5 sm:gap-4 select-none w-full max-w-[1400px] mx-auto">
       {/* Clean Header & Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#EDE8DC] p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#EDE8DC] p-3 sm:p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-3.5 h-3.5 bg-[#1d635d]"></span>
-            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-base sm:text-lg">
+            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-sm sm:text-lg">
               BED ROSTER
             </h1>
           </div>
-          <p className="font-body-sm text-[#3f4947] text-xs mt-0.5">
+          <p className="font-body-sm text-[#3f4947] text-[11px] sm:text-xs mt-0.5">
             ICU POD 3 // Patient turn schedules and contact pressure overview.
           </p>
         </div>
 
-        {/* Filter Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Filter Buttons - Grid 3 cols on mobile, flex row on sm+ */}
+        <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
           <button
             onClick={() => setFilter('all')}
-            className={`px-3 py-1 font-label-mono-sm text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] ${
+            className={`px-2 sm:px-3 py-1.5 font-label-mono-sm text-[10px] sm:text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] text-center neo-btn ${
               filter === 'all'
                 ? 'bg-[#1d635d] text-white shadow-[2px_2px_0px_#121c1b]'
                 : 'bg-[#ffffff] text-[#121c1b] hover:bg-[#ebf6f4]'
             }`}
           >
-            ALL BEDS ({beds.length})
+            ALL ({beds.length})
           </button>
           <button
             onClick={() => setFilter('due')}
-            className={`px-3 py-1 font-label-mono-sm text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] ${
+            className={`px-2 sm:px-3 py-1.5 font-label-mono-sm text-[10px] sm:text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] text-center neo-btn ${
               filter === 'due'
                 ? 'bg-[#8b2635] text-white shadow-[2px_2px_0px_#121c1b]'
                 : 'bg-[#ffffff] text-[#8b2635] hover:bg-[#ffdadb]'
             }`}
           >
-            DUE NOW ({beds.filter((b) => b.status === 'due_now' || b.status === 'overdue').length})
+            DUE ({beds.filter((b) => b.status === 'due_now' || b.status === 'overdue').length})
           </button>
           <button
             onClick={() => setFilter('high_risk')}
-            className={`px-3 py-1 font-label-mono-sm text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] ${
+            className={`px-2 sm:px-3 py-1.5 font-label-mono-sm text-[10px] sm:text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] text-center neo-btn ${
               filter === 'high_risk'
                 ? 'bg-[#1d635d] text-white shadow-[2px_2px_0px_#121c1b]'
                 : 'bg-[#ffffff] text-[#121c1b] hover:bg-[#ebf6f4]'
@@ -90,7 +90,7 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({
       </div>
 
       {/* Simplified 8-Bed Clinical Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {filteredBeds.map((bed) => {
           const isUrgent = bed.status === 'due_now' || bed.status === 'overdue';
           const isElevated = bed.status === 'elevated' || bed.status === 'pre_alert';
@@ -100,7 +100,7 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({
               key={bed.id}
               className={`bg-[#ffffff] border-[3px] ${
                 isUrgent ? 'border-[#8b2635]' : 'border-[#121c1b]'
-              } shadow-[3px_3px_0px_#121c1b] flex flex-col justify-between p-3.5 transition-all hover:-translate-x-0.5 hover:-translate-y-0.5`}
+              } shadow-[3px_3px_0px_#121c1b] flex flex-col justify-between p-3 sm:p-3.5 transition-all hover:-translate-x-0.5 hover:-translate-y-0.5`}
             >
               <div>
                 {/* Bed Header */}
@@ -125,13 +125,13 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({
                 </div>
 
                 {/* Posture & Pressure Stats */}
-                <div className="bg-[#ebf6f4] p-2.5 border border-[#121c1b] my-3 space-y-1 text-xs font-label-mono-sm">
-                  <div className="flex justify-between">
-                    <span className="text-[#3f4947]">POSTURE:</span>
-                    <span className="font-bold text-[#121c1b] truncate max-w-[130px]">{bed.posture}</span>
+                <div className="bg-[#ebf6f4] p-2 sm:p-2.5 border border-[#121c1b] my-2.5 sm:my-3 space-y-1 text-xs font-label-mono-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#3f4947] text-[11px]">POSTURE:</span>
+                    <span className="font-bold text-[#121c1b] truncate max-w-[130px] text-right">{bed.posture}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#3f4947]">PEAK LOAD:</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#3f4947] text-[11px]">PEAK LOAD:</span>
                     <span className={`font-bold ${isUrgent ? 'text-[#8b2635]' : isElevated ? 'text-[#d97757]' : 'text-[#1d635d]'}`}>
                       {bed.peakPressure} mmHg
                     </span>
@@ -139,7 +139,7 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({
                 </div>
 
                 {/* Countdown to Next Turn */}
-                <div className="mb-3">
+                <div className="mb-2.5 sm:mb-3">
                   <div className="flex justify-between items-baseline text-[11px] font-label-mono-sm mb-1">
                     <span className="text-[#3f4947] font-bold">NEXT TURN:</span>
                     <span className={`font-bold ${isUrgent ? 'text-[#8b2635]' : 'text-[#121c1b]'}`}>
@@ -160,11 +160,11 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons */}
+              {/* Action Buttons with Comfortable Touch Height */}
               <div className="flex items-center gap-2 pt-2 border-t border-[#121c1b]/20">
                 <button
                   onClick={() => onLogTurnForBed(bed)}
-                  className={`flex-1 py-1.5 px-2 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] font-headline-sm text-xs uppercase font-bold text-center transition-all neo-btn cursor-pointer ${
+                  className={`flex-1 min-h-[38px] py-2 px-2 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] font-headline-sm text-xs uppercase font-bold text-center transition-all neo-btn cursor-pointer ${
                     isUrgent
                       ? 'bg-[#8b2635] text-white hover:bg-[#6c1c28]'
                       : 'bg-[#1d635d] text-white hover:bg-[#121c1b]'
@@ -174,7 +174,7 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({
                 </button>
                 <button
                   onClick={() => onInspectBed(bed)}
-                  className="px-2 py-1.5 bg-[#ffffff] hover:bg-[#ebf6f4] border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] text-xs font-bold text-[#121c1b] neo-btn cursor-pointer"
+                  className="min-h-[38px] px-3 py-2 bg-[#ffffff] hover:bg-[#ebf6f4] border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] text-xs font-bold text-[#121c1b] neo-btn cursor-pointer"
                   title="View patient details"
                 >
                   DETAILS

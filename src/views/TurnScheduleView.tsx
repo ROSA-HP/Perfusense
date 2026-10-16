@@ -76,53 +76,53 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({
   const areaPoints = `${getX(0)},${chartHeight - paddingY} ${points} ${getX(data8h.length - 1)},${chartHeight - paddingY}`;
 
   return (
-    <div className="flex flex-col gap-4 select-none w-full max-w-[1300px] mx-auto">
+    <div className="flex flex-col gap-3.5 sm:gap-4 select-none w-full max-w-[1300px] mx-auto">
       {/* Clean Header & Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#EDE8DC] p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#EDE8DC] p-3 sm:p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-3.5 h-3.5 bg-[#1d635d]"></span>
-            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-base sm:text-lg">
+            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-sm sm:text-lg">
               PRESSURE HISTORY
             </h1>
           </div>
-          <p className="font-body-sm text-[#3f4947] text-xs mt-0.5">
-            BED 07 // Eleanor Vance (#8942-01) // Historical contact pressure trends and offload log.
+          <p className="font-body-sm text-[#3f4947] text-[11px] sm:text-xs mt-0.5">
+            BED 07 // Eleanor Vance (#8942-01) // Continuous trend &amp; offload log.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {/* Time range selector */}
           <div className="flex items-center bg-[#ffffff] border-[2px] border-[#121c1b] p-0.5 shadow-[1px_1px_0px_#121c1b]">
             <button
               onClick={() => setTimeRange('8h')}
-              className={`px-3 py-1 font-label-mono-sm text-xs font-bold uppercase transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1 font-label-mono-sm text-[11px] sm:text-xs font-bold uppercase transition-all cursor-pointer ${
                 timeRange === '8h' ? 'bg-[#1d635d] text-white' : 'text-[#121c1b] hover:bg-[#ebf6f4]'
               }`}
             >
-              8 HOURS
+              8H
             </button>
             <button
               onClick={() => setTimeRange('24h')}
-              className={`px-3 py-1 font-label-mono-sm text-xs font-bold uppercase transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1 font-label-mono-sm text-[11px] sm:text-xs font-bold uppercase transition-all cursor-pointer ${
                 timeRange === '24h' ? 'bg-[#1d635d] text-white' : 'text-[#121c1b] hover:bg-[#ebf6f4]'
               }`}
             >
-              24 HOURS
+              24H
             </button>
             <button
               onClick={() => setTimeRange('7d')}
-              className={`px-3 py-1 font-label-mono-sm text-xs font-bold uppercase transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1 font-label-mono-sm text-[11px] sm:text-xs font-bold uppercase transition-all cursor-pointer ${
                 timeRange === '7d' ? 'bg-[#1d635d] text-white' : 'text-[#121c1b] hover:bg-[#ebf6f4]'
               }`}
             >
-              7 DAYS
+              7D
             </button>
           </div>
 
           <button
             onClick={handleExportCSV}
-            className="px-3 py-1.5 bg-[#1d635d] text-white border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-xs font-bold uppercase transition-all neo-btn flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 bg-[#1d635d] text-white border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-xs font-bold uppercase transition-all neo-btn flex items-center justify-center gap-1.5 cursor-pointer flex-1 sm:flex-none"
           >
             <span className="material-symbols-outlined text-[16px]">download</span>
             <span>EXPORT CSV</span>
@@ -131,81 +131,87 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({
       </div>
 
       {/* 4 Summary Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-[#ffffff] p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
-          <div className="font-label-mono-sm text-[10px] text-[#3f4947] uppercase font-bold">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="bg-[#ffffff] p-2.5 sm:p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
+          <div className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase font-bold">
             CURRENT PRESSURE
           </div>
-          <div className="font-headline-lg text-lg text-[#1d635d] font-bold mt-1">
+          <div className="font-headline-lg text-base sm:text-lg text-[#1d635d] font-bold mt-1">
             19 <span className="text-xs font-normal text-[#121c1b]">mmHg</span>
           </div>
-          <div className="text-[10px] text-[#3f4947] mt-0.5 font-label-mono-sm">
+          <div className="text-[9px] sm:text-[10px] text-[#3f4947] mt-0.5 font-label-mono-sm truncate">
             Optimal (Left Lateral)
           </div>
         </div>
 
-        <div className="bg-[#ffffff] p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
-          <div className="font-label-mono-sm text-[10px] text-[#3f4947] uppercase font-bold">
+        <div className="bg-[#ffffff] p-2.5 sm:p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
+          <div className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase font-bold">
             MAX RECORDED PEAK
           </div>
-          <div className="font-headline-lg text-lg text-[#8b2635] font-bold mt-1">
+          <div className="font-headline-lg text-base sm:text-lg text-[#8b2635] font-bold mt-1">
             68.4 <span className="text-xs font-normal text-[#121c1b]">mmHg</span>
           </div>
-          <div className="text-[10px] text-[#8b2635] mt-0.5 font-label-mono-sm font-bold">
+          <div className="text-[9px] sm:text-[10px] text-[#8b2635] mt-0.5 font-label-mono-sm font-bold truncate">
             09:30 (Sacrum hot spot)
           </div>
         </div>
 
-        <div className="bg-[#ffffff] p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
-          <div className="font-label-mono-sm text-[10px] text-[#3f4947] uppercase font-bold">
+        <div className="bg-[#ffffff] p-2.5 sm:p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
+          <div className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase font-bold">
             AVERAGE PRESSURE
           </div>
-          <div className="font-headline-lg text-lg text-[#121c1b] font-bold mt-1">
+          <div className="font-headline-lg text-base sm:text-lg text-[#121c1b] font-bold mt-1">
             24.2 <span className="text-xs font-normal text-[#121c1b]">mmHg</span>
           </div>
-          <div className="text-[10px] text-[#1d635d] mt-0.5 font-label-mono-sm font-bold">
-            Below capillary threshold
+          <div className="text-[9px] sm:text-[10px] text-[#1d635d] mt-0.5 font-label-mono-sm font-bold truncate">
+            Below capillary limit
           </div>
         </div>
 
-        <div className="bg-[#ffffff] p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
-          <div className="font-label-mono-sm text-[10px] text-[#3f4947] uppercase font-bold">
+        <div className="bg-[#ffffff] p-2.5 sm:p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
+          <div className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase font-bold">
             ON-TIME TURNS
           </div>
-          <div className="font-headline-lg text-lg text-[#1d635d] font-bold mt-1">
+          <div className="font-headline-lg text-base sm:text-lg text-[#1d635d] font-bold mt-1">
             4 / 4 <span className="text-xs font-normal text-[#121c1b]">(100%)</span>
           </div>
-          <div className="text-[10px] text-[#1d635d] mt-0.5 font-label-mono-sm font-bold">
+          <div className="text-[9px] sm:text-[10px] text-[#1d635d] mt-0.5 font-label-mono-sm font-bold truncate">
             Fully compliant
           </div>
         </div>
       </div>
 
       {/* Pressure Trend Graph Card */}
-      <div className="bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-4 flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#121c1b]/30">
+      <div className="bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-3 sm:p-4 flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 pb-2 border-b border-[#121c1b]/30">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[#1d635d] text-[20px]">trending_up</span>
-            <span className="font-headline-sm font-bold text-sm text-[#121c1b] uppercase">
-              CONTACT PRESSURE TIMELINE (LAST 8 HOURS)
+            <span className="font-headline-sm font-bold text-xs sm:text-sm text-[#121c1b] uppercase">
+              PRESSURE TIMELINE ({timeRange.toUpperCase()})
             </span>
           </div>
-          <div className="flex items-center gap-4 text-xs font-label-mono-sm">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-0.5 bg-[#d97757] border-t border-dashed border-[#d97757]"></span>
-              <span className="text-[10px] text-[#3f4947]">32 mmHg Capillary Limit</span>
+          <div className="flex items-center gap-3 text-xs font-label-mono-sm">
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-0.5 bg-[#d97757]"></span>
+              <span className="text-[9px] sm:text-[10px] text-[#3f4947]">32 mmHg Capillary</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-0.5 bg-[#8b2635] border-t border-dashed border-[#8b2635]"></span>
-              <span className="text-[10px] text-[#8b2635] font-bold">55 mmHg Ischemia Threshold</span>
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-0.5 bg-[#8b2635]"></span>
+              <span className="text-[9px] sm:text-[10px] text-[#8b2635] font-bold">55 mmHg Ischemic</span>
             </span>
           </div>
         </div>
 
+        {/* Mobile Swipe Hint */}
+        <div className="md:hidden flex items-center justify-between text-[10px] text-[#1d635d] font-label-mono-sm bg-[#ebf6f4] px-2 py-1 border border-[#121c1b]/20">
+          <span>SWIPE GRAPH HORIZONTALLY</span>
+          <span className="material-symbols-outlined text-[14px]">swipe</span>
+        </div>
+
         {/* SVG Chart Container */}
-        <div className="w-full overflow-x-auto">
-          <div className="min-w-[680px]">
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-48 select-none">
+        <div className="w-full overflow-x-auto touch-pan-x">
+          <div className="min-w-[620px] sm:min-w-[680px]">
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-44 sm:h-48 select-none">
               {/* Background horizontal grid lines */}
               <line x1={paddingX} y1={getY(0)} x2={chartWidth - paddingX} y2={getY(0)} stroke="#121c1b" strokeWidth="1" opacity="0.2" />
               <line x1={paddingX} y1={getY(20)} x2={chartWidth - paddingX} y2={getY(20)} stroke="#121c1b" strokeWidth="1" opacity="0.1" strokeDasharray="3,3" />
@@ -223,7 +229,7 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({
                 strokeWidth="1.5"
                 strokeDasharray="4,4"
               />
-              <text x={chartWidth - paddingX + 5} y={getY(32) + 3} fill="#d97757" fontSize="9" fontFamily="monospace">
+              <text x={chartWidth - paddingX + 4} y={getY(32) + 3} fill="#d97757" fontSize="9" fontFamily="monospace">
                 32
               </text>
 
@@ -237,7 +243,7 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({
                 strokeWidth="1.5"
                 strokeDasharray="4,4"
               />
-              <text x={chartWidth - paddingX + 5} y={getY(55) + 3} fill="#8b2635" fontSize="9" fontFamily="monospace" fontWeight="bold">
+              <text x={chartWidth - paddingX + 4} y={getY(55) + 3} fill="#8b2635" fontSize="9" fontFamily="monospace" fontWeight="bold">
                 55
               </text>
 
@@ -298,8 +304,8 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({
 
         {/* Selected Data Point Detail Box */}
         {selectedPoint ? (
-          <div className="bg-[#ebf6f4] p-3 border-[2px] border-[#121c1b] flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-3">
+          <div className="bg-[#ebf6f4] p-2.5 sm:p-3 border-[2px] border-[#121c1b] flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center flex-wrap gap-2 sm:gap-3">
               <span className="font-bold text-[#121c1b]">TIME: {selectedPoint.time}</span>
               <span>ZONE: <strong className="text-[#1d635d]">{selectedPoint.zone}</strong></span>
               <span>PRESSURE: <strong className={selectedPoint.status === 'critical' ? 'text-[#8b2635]' : 'text-[#121c1b]'}>{selectedPoint.pressure} mmHg</strong></span>
@@ -314,27 +320,69 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({
             </button>
           </div>
         ) : (
-          <div className="text-[11px] text-[#3f4947] text-center font-label-mono-sm">
-            Click on any circle in the graph above to inspect specific pressure recordings and turns.
+          <div className="text-[10px] sm:text-[11px] text-[#3f4947] text-center font-label-mono-sm">
+            Tap any circle in the graph to inspect specific pressure recordings and turns.
           </div>
         )}
       </div>
 
-      {/* Clean Historical Pressure Log Table */}
-      <div className="bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-4 flex flex-col gap-3">
+      {/* Historical Pressure Log - Responsive Mobile Cards + Desktop Table */}
+      <div className="bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-3 sm:p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between pb-2 border-b border-[#121c1b]/30">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#1d635d] text-[20px]">table_rows</span>
-            <h2 className="font-headline-sm font-bold text-sm text-[#121c1b] uppercase">
+            <span className="material-symbols-outlined text-[#1d635d] text-[19px]">table_rows</span>
+            <h2 className="font-headline-sm font-bold text-xs sm:text-sm text-[#121c1b] uppercase">
               RECORDED PRESSURE &amp; REPOSITIONING LOG
             </h2>
           </div>
-          <span className="font-label-mono-sm text-xs text-[#3f4947]">
-            {data8h.length} ENTRIES LOGGED
+          <span className="font-label-mono-sm text-[10px] sm:text-xs text-[#3f4947]">
+            {data8h.length} LOGS
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile View: Clinical Cards (Clean, readable, zero horizontal scrolling) */}
+        <div className="md:hidden flex flex-col gap-2">
+          {data8h.map((row, index) => {
+            let badgeClass = 'bg-[#a3cfc9] text-[#121c1b]';
+            if (row.status === 'critical') badgeClass = 'bg-[#8b2635] text-white font-bold';
+            else if (row.status === 'elevated') badgeClass = 'bg-[#d97757] text-white';
+
+            return (
+              <div
+                key={index}
+                className="bg-[#ebf6f4] border border-[#121c1b] p-2.5 shadow-[1px_1px_0px_#121c1b] flex flex-col gap-1.5 font-label-mono-sm text-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[#121c1b] bg-[#ffffff] px-1.5 py-0.5 border border-[#121c1b]">
+                      {row.time}
+                    </span>
+                    <span className="font-bold text-[#1d635d]">{row.zone}</span>
+                  </div>
+                  <span className={`px-2 py-0.5 border border-[#121c1b] text-[9px] uppercase font-bold ${badgeClass}`}>
+                    {row.status}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-[#121c1b]/15 text-[11px]">
+                  <span>
+                    PRESSURE: <strong className={row.status === 'critical' ? 'text-[#8b2635] font-bold text-xs' : 'text-[#121c1b]'}>{row.pressure} mmHg</strong>
+                  </span>
+                  <span className="text-[#3f4947] truncate max-w-[150px]">{row.posture}</span>
+                </div>
+
+                {row.note && (
+                  <div className="bg-[#ffffff] px-2 py-1 border border-[#121c1b]/30 text-[10px] text-[#3f4947]">
+                    NOTE: {row.note}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop View: Full Data Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left font-label-mono-sm text-xs">
             <thead>
               <tr className="border-b-[2px] border-[#121c1b] bg-[#EDE8DC] text-[#121c1b]">

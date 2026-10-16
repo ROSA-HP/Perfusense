@@ -331,25 +331,30 @@ export default function App() {
     showToast('MAT TARE COMPLETE (LOCAL)', 'Baseline zero plane re-calibrated across all 64 cells.');
   };
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+
   return (
-    <div className="min-h-screen bg-[#f1fcf9] text-[#121c1b] relative font-body-md">
+    <div className="min-h-screen bg-[#f1fcf9] text-[#121c1b] relative font-body-md overflow-x-hidden">
       {/* Top Header */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isApiConnected={isApiConnected}
+        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
 
-      {/* Fixed Left Sidebar */}
+      {/* Left Sidebar (Desktop flyout + Mobile sliding drawer) */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         selectedPod={selectedPod}
         setSelectedPod={setSelectedPod}
+        isOpenControlled={isSidebarOpen}
+        onCloseControlled={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main Content Area - Maximized Canvas */}
-      <div className="w-full px-3 sm:px-6 lg:px-8 pt-18 sm:pt-20 pb-16 sm:pb-24">
+      {/* Main Content Area - Responsive Mobile & Desktop Spacing */}
+      <div className="w-full px-2.5 sm:px-6 lg:px-8 pt-16 sm:pt-20 pb-20 md:pb-12">
         <main className="w-full max-w-[1720px] mx-auto">
           {activeTab === 'monitor' && (
             <LiveHeatmapView
@@ -406,6 +411,44 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Mobile Ergonomic Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#ffffff] border-t-[3px] border-[#121c1b] flex items-center justify-around h-16 shadow-[0px_-2px_6px_rgba(0,0,0,0.08)] md:hidden px-1">
+        {[
+          { id: 'monitor' as ActiveTab, label: 'Monitor', icon: 'sensors' },
+          { id: 'bed-roster' as ActiveTab, label: 'Beds', icon: 'bed', badge: `${beds.length}` },
+          { id: 'turn-schedule' as ActiveTab, label: 'History', icon: 'history' },
+          { id: 'peak-alerts' as ActiveTab, label: 'Zones', icon: 'hourglass_empty', badge: '6' },
+          { id: 'sensor-mat-hardware' as ActiveTab, label: 'Mat', icon: 'memory' },
+        ].map((item) => {
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`flex-1 py-1 px-0.5 flex flex-col items-center justify-center gap-0.5 transition-all select-none relative cursor-pointer ${
+                isActive ? 'text-[#1d635d]' : 'text-[#3f4947] hover:text-[#121c1b]'
+              }`}
+            >
+              <div
+                className={`w-9 h-7 rounded-full flex items-center justify-center transition-all ${
+                  isActive ? 'bg-[#adefe7] text-[#00201d] font-bold border border-[#121c1b]' : ''
+                }`}
+              >
+                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+              </div>
+              <span className={`text-[10px] font-bold uppercase tracking-tight leading-none ${isActive ? 'text-[#121c1b]' : ''}`}>
+                {item.label}
+              </span>
+              {item.badge && !isActive && (
+                <span className="absolute top-1 right-2 text-[8px] bg-[#121c1b] text-white px-1 py-0 rounded font-mono font-bold leading-tight">
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
       {/* Interactive Modals & Toast notifications */}
       <Modals
