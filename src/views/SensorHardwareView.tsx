@@ -4,15 +4,27 @@ import { PiezoCell } from '../types';
 interface SensorHardwareViewProps {
   cells: PiezoCell[];
   showToast: (title: string, desc?: string) => void;
+  onTare?: () => void;
+  isApiConnected?: boolean;
 }
 
 export const SensorHardwareView: React.FC<SensorHardwareViewProps> = ({
   cells,
   showToast,
+  onTare,
+  isApiConnected = false,
 }) => {
   const [selectedCell, setSelectedCell] = useState<PiezoCell>(
-    cells.find((c) => c.id === 'PZ-36') || cells[35]
+    cells.find((c) => c.id === 'PZ-36') || cells[35] || cells[0]
   );
+
+  const handleTare = () => {
+    if (onTare) {
+      onTare();
+    } else {
+      showToast('MAT TARE INITIATED', 'Baseline voltage re-zeroed across all 64 piezoelectric cells.');
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4 select-none w-full max-w-[1200px] mx-auto">
@@ -30,12 +42,20 @@ export const SensorHardwareView: React.FC<SensorHardwareViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleTare}
+            className="px-3 py-1 bg-[#1d635d] text-white border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-xs font-bold uppercase transition-all neo-btn flex items-center gap-1.5 cursor-pointer"
+            title="Calibrate empty mat reading as baseline zero"
+          >
+            <span className="material-symbols-outlined text-[16px]">restart_alt</span>
+            <span>TARE (ZERO SENSORS)</span>
+          </button>
           <span className="bg-[#1d635d] text-white font-label-mono-sm px-2.5 py-1 border-[2px] border-[#121c1b] uppercase text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
             64/64 CELLS ACTIVE
           </span>
           <span className="bg-[#ffffff] text-[#121c1b] font-label-mono-sm px-2.5 py-1 border-[2px] border-[#121c1b] uppercase text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
-            STATUS: CALIBRATED
+            STATUS: {isApiConnected ? 'CALIBRATED (API)' : 'CALIBRATED'}
           </span>
         </div>
       </div>

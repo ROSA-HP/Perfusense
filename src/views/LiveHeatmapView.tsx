@@ -1,14 +1,29 @@
 import React, { useState } from 'react';
 
+import { PatientBed } from '../types';
+import { api } from '../api/client';
+
 interface LiveHeatmapViewProps {
-  onOpenProtocolEdit: () => void;
+  onOpenProtocolEdit?: () => void;
   onOpenTurnLog: () => void;
   showToast: (title: string, desc?: string) => void;
+  liveMatrix?: number[][] | null;
+  peakPressure?: number | null;
+  peakZone?: string | null;
+  isApiConnected?: boolean;
+  onSnooze?: () => void;
+  bed?: PatientBed | null;
 }
 
 export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
   onOpenTurnLog,
   showToast,
+  liveMatrix,
+  peakPressure,
+  peakZone,
+  isApiConnected = false,
+  onSnooze,
+  bed,
 }) => {
   // 8x8 matrix pressure levels (0=none, 1=light, 2=heavy, 3=hotspot)
   const initialMatrix = [
@@ -22,7 +37,10 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
     [0, 0, 2, 1, 0, 0, 0, 0], // Row 8: Heels
   ];
 
-  const [matrix] = useState<number[][]>(initialMatrix);
+  const currentMatrix = (liveMatrix && liveMatrix.length === 8) ? liveMatrix : initialMatrix;
+  const currentPeak = peakPressure ?? 68.4;
+  const currentZone = peakZone || 'SACRUM & TROCHANTER';
+
   const [selectedCell, setSelectedCell] = useState<{ r: number; c: number; val: number } | null>({
     r: 3,
     c: 2,
@@ -34,7 +52,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
 
   const handleDoneTurned = () => {
     setTurnCompleted(true);
-    showToast('REPOSITION LOGGED: 09:42', 'Patient turned to Right 30° Lateral. Epic flowsheet auto-synced.');
+    onOpenTurnLog();
     setTimeout(() => {
       setTurnCompleted(false);
     }, 4500);
@@ -42,13 +60,29 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
 
   const handleSnooze = () => {
     setSnoozeActive(true);
-    showToast('ALARM SNOOZED +5 MIN', 'Clinical alert deferred for bedside assessment.');
+    if (onSnooze) {
+      onSnooze();
+    } else {
+      showToast('ALARM SNOOZED +5 MIN', 'Clinical alert deferred for bedside assessment.');
+    }
     setTimeout(() => {
       setSnoozeActive(false);
     }, 3500);
   };
 
   const handleExportAudit = () => {
+    if (isApiConnected) {
+      const url = api.auditLogs.exportCsvUrl(bed?.id || 'bed-07');
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Perfusense_Audit_${bed?.id || 'bed-07'}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('AUDIT LOG EXPORTED', 'Live CSV downloaded from Perfusense server.');
+      return;
+    }
+
     const csvContent =
       'data:text/csv;charset=utf-8,Timestamp,Patient,Zone,PeakMmHg,RN\n09:42,Eleanor Vance,Sacrum,68.4,RN K. Nygård\n08:30,Eleanor Vance,Trochanter,28.0,RN T. Kowalski';
     const encodedUri = encodeURI(csvContent);
@@ -79,20 +113,20 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
         <div className="flex items-center flex-wrap gap-2">
           <div className="bg-[#121c1b] text-[#f1fcf9] px-2.5 py-0.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm uppercase tracking-wider flex items-center gap-1.5 text-[10px]">
             <span className="w-2 h-2 bg-[#adefe7] animate-ping inline-block rounded-none"></span>
-            <span>TELEMETRY FEED // RUNNING</span>
+            <span>{isApiConnected ? 'TELEMETRY FEED // LIVE API' : 'TELEMETRY FEED // STANDALONE'}</span>
           </div>
           <div className="bg-[#ffffff] text-[#121c1b] px-2.5 py-0.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm uppercase font-bold text-[10px]">
-            PATIENT: ELEANOR V. (AGE 76)
+            PATIENT: {bed?.patientName ? bed.patientName.toUpperCase() : 'ELEANOR V. (AGE 76)'}
           </div>
           <div className="bg-[#1d635d] text-[#ffffff] px-2.5 py-0.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm uppercase text-[10px]">
-            BRADEN SCORE: 12 (HIGH RISK)
+            BRADEN SCORE: {bed?.bradenScore ?? 12} ({bed?.bradenRisk ? bed.bradenRisk.toUpperCase() + ' RISK' : 'HIGH RISK'})
           </div>
         </div>
 
         <div className="flex items-center gap-2 font-label-mono-sm text-[10px] text-[#121c1b]">
           <span>MAT: SENSO-GRID v4.1</span>
           <span className="opacity-40">/</span>
-          <span>LATENCY: 14MS</span>
+          <span>{isApiConnected ? 'BACKEND: CONNECTED' : 'LATENCY: 14MS'}</span>
         </div>
       </div>
 
@@ -107,7 +141,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
             </h2>
           </div>
           <div className="font-label-mono-sm text-xs text-[#1d635d] font-bold">
-            BED 07 // CONTINUOUS MONITORING
+            {bed?.bedNumber || 'BED 07'} // CONTINUOUS MONITORING
           </div>
         </div>
 
@@ -117,7 +151,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
           <div className="lg:col-span-6 flex flex-col items-center justify-center">
             <div className="bg-[#ffffff] p-3 border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] w-full max-w-[360px]">
               <div className="grid grid-cols-8 gap-1.5 aspect-square w-full">
-                {matrix.map((row, rIdx) =>
+                {currentMatrix.map((row, rIdx) =>
                   row.map((cellVal, cIdx) => {
                     const isSelected = selectedCell?.r === rIdx && selectedCell?.c === cIdx;
 
@@ -163,7 +197,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
                 ESTIMATED PATIENT POSTURE
               </div>
               <div className="font-headline-sm text-[#1d635d] mt-0.5 uppercase tracking-tight font-bold text-sm">
-                RIGHT 30° LATERAL TILT
+                {bed?.posture || 'RIGHT 30° LATERAL TILT'}
               </div>
               <div className="mt-1.5 font-label-mono-sm text-[#121c1b] bg-[#ffffff] px-2 py-0.5 border border-[#121c1b] inline-block font-bold text-[10px]">
                 CONFIDENCE: 94.2%
@@ -207,7 +241,7 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
               </div>
               <div className="flex justify-between">
                 <span>PEAK CONTACT FORCE:</span>
-                <span className="font-bold text-[#8b2635]">68.4 mmHg (SACRUM)</span>
+                <span className="font-bold text-[#8b2635]">{currentPeak} mmHg ({currentZone})</span>
               </div>
               <div className="flex justify-between">
                 <span>SELECTED SENSOR:</span>

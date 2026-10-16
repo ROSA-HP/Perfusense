@@ -109,6 +109,15 @@ export const api = {
     update: (patch: Partial<{ thresholds: Partial<Settings['thresholds']>; protocol: Partial<Settings['protocol']>; zoneLimitsMin: Record<string, number> }>) =>
       request<Settings>('/settings', { method: 'PUT', body: patch }),
   },
+  health: async (): Promise<{ ok: boolean; db: string; streams: number } | null> => {
+    try {
+      const res = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(3500) });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
   broadcast: (pod: string, message: string, sentBy = '') =>
     request<{ id?: string }>('/broadcasts', { method: 'POST', body: { pod, message, sentBy } }),
 };
@@ -128,13 +137,27 @@ export function connectLive(handlers: {
   onFrame?: (f: LiveFrame) => void;
   onBed?: (b: BedView) => void;
   onAlert?: (a: AuditLogRow) => void;
+  onError?: (e: Event) => void;
 }): () => void {
-  const es = new EventSource(`${BASE}/api/stream`);
-  const on = <T,>(name: string, fn?: (d: T) => void) => {
-    if (fn) es.addEventListener(name, (e) => fn(JSON.parse((e as MessageEvent).data) as T));
-  };
-  on<LiveFrame>('frame', handlers.onFrame);
-  on<BedView>('bed', handlers.onBed);
-  on<AuditLogRow>('alert', handlers.onAlert);
-  return () => es.close();
+  try {
+    const es = new EventSource(`${BASE}/api/stream`);
+    const on = <T,>(name: string, fn?: (d: T) => void) => {
+      if (fn) es.addEventListener(name, (e) => {
+        try {
+          fn(JSON.parse((e as MessageEvent).data) as T);
+        } catch {
+          /* ignore parse errors */
+        }
+      });
+    };
+    on<LiveFrame>('frame', handlers.onFrame);
+    on<BedView>('bed', handlers.onBed);
+    on<AuditLogRow>('alert', handlers.onAlert);
+    if (handlers.onError) {
+      es.onerror = handlers.onError;
+    }
+    return () => es.close();
+  } catch {
+    return () => {};
+  }
 }

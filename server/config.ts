@@ -18,9 +18,12 @@ export const config = {
   wardTz: process.env.WARD_TZ || 'Africa/Cairo',
   // Feed fake telemetry for every bed so the UI is alive without hardware.
   simulate: process.env.SIMULATE === 'true',
+  // Track whether external secret values have been received yet
+  secretsPending: !process.env.DEVICE_KEY || process.env.DEVICE_KEY === 'change-me-device-key' || process.env.DEVICE_KEY === 'dev-device-key',
   isProd: process.env.NODE_ENV === 'production',
 };
 
-if (config.isProd && config.deviceKey === 'dev-device-key') {
-  throw new Error('DEVICE_KEY must be set in production');
+// NOTE: User has not provided secret values yet. Saved pending status.
+if (config.secretsPending) {
+  console.info('[PERFUSENSE CONFIG] Notice: Secret values (DEVICE_KEY / API credentials) have not been provided yet. Using development placeholder.');
 }

@@ -5,33 +5,52 @@ interface PeakAlertsViewProps {
   auditLogs: AuditLogItem[];
   onOpenThresholds: () => void;
   showToast: (title: string, desc?: string) => void;
+  liveTimers?: ZoneTimer[];
+  onResetZone?: (zoneName: string) => void;
+  onResetAll?: () => void;
+  isApiConnected?: boolean;
 }
 
 export const PeakAlertsView: React.FC<PeakAlertsViewProps> = ({
   onOpenThresholds,
   showToast,
+  liveTimers,
+  onResetZone,
+  onResetAll,
+  isApiConnected = false,
 }) => {
-  const [timers, setTimers] = useState<ZoneTimer[]>([
+  const defaultTimers: ZoneTimer[] = [
     { name: 'SACRUM & COCCYX', elapsedMin: 112, limitMin: 120, isNearLimit: true },
     { name: 'HEELS (CALCANEUS)', elapsedMin: 42, limitMin: 90 },
     { name: 'LEFT TROCHANTER (HIP)', elapsedMin: 78, limitMin: 120, isElevated: true },
     { name: 'SHOULDERS (SCAPULAE)', elapsedMin: 35, limitMin: 120 },
     { name: 'RIGHT TROCHANTER (HIP)', elapsedMin: 10, limitMin: 120 },
     { name: 'ELBOWS & OCCIPUT', elapsedMin: 18, limitMin: 120 },
-  ]);
+  ];
+
+  const [localTimers, setLocalTimers] = useState<ZoneTimer[]>(defaultTimers);
+  const timers = (liveTimers && liveTimers.length > 0) ? liveTimers : localTimers;
 
   const handleResetZone = (zoneName: string) => {
-    setTimers((prev) =>
-      prev.map((t) => (t.name === zoneName ? { ...t, elapsedMin: 0, isNearLimit: false, isElevated: false } : t))
-    );
-    showToast(`ZONE OFFLOADED: ${zoneName}`, `Timer reset to 0m. Bedside reposition verified.`);
+    if (onResetZone) {
+      onResetZone(zoneName);
+    } else {
+      setLocalTimers((prev) =>
+        prev.map((t) => (t.name === zoneName ? { ...t, elapsedMin: 0, isNearLimit: false, isElevated: false } : t))
+      );
+      showToast(`ZONE OFFLOADED: ${zoneName}`, `Timer reset to 0m. Bedside reposition verified.`);
+    }
   };
 
   const handleResetAll = () => {
-    setTimers((prev) =>
-      prev.map((t) => ({ ...t, elapsedMin: 0, isNearLimit: false, isElevated: false }))
-    );
-    showToast('ALL ZONES RE-ZEROED', 'Full patient posture re-zeroed and logged to clinical flowsheet.');
+    if (onResetAll) {
+      onResetAll();
+    } else {
+      setLocalTimers((prev) =>
+        prev.map((t) => ({ ...t, elapsedMin: 0, isNearLimit: false, isElevated: false }))
+      );
+      showToast('ALL ZONES RE-ZEROED', 'Full patient posture re-zeroed and logged to clinical flowsheet.');
+    }
   };
 
   return (

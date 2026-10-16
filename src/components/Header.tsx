@@ -4,11 +4,13 @@ import { ActiveTab } from '../types';
 interface HeaderProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
+  isApiConnected?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
+  isApiConnected = false,
 }) => {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[#f1fcf9] border-b-[3px] border-[#121c1b] h-14 sm:h-16 px-3 sm:px-6 flex flex-nowrap items-center justify-between gap-2 sm:gap-4 select-none overflow-hidden">
@@ -87,6 +89,27 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden lg:flex items-center gap-1 bg-[#ffffff] px-2 py-0.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] whitespace-nowrap">
           <span className="font-label-mono-sm text-[10px] text-[#3f4947]">SHIFT:</span>
           <span className="font-label-mono-sm text-[10px] text-[#121c1b] font-bold">RN K. NYGÅRD</span>
+        </div>
+
+        {/* Backend API Connection Status */}
+        <div
+          className={`hidden sm:flex items-center gap-1.5 px-2 py-0.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-[10px] font-bold whitespace-nowrap transition-colors ${
+            isApiConnected
+              ? 'bg-[#adefe7] text-[#121c1b]'
+              : 'bg-[#fff5eb] text-[#8b2635]'
+          }`}
+          title={
+            isApiConnected
+              ? 'Express + MongoDB API connected. Real-time telemetry active.'
+              : 'Standalone mode. Start server (npm run server) with MongoDB to connect live.'
+          }
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              isApiConnected ? 'bg-[#1d635d] animate-pulse' : 'bg-[#d97757]'
+            }`}
+          />
+          <span>{isApiConnected ? 'API: LIVE' : 'API: LOCAL'}</span>
         </div>
 
         {/* User profile icon */}

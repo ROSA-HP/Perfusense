@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 
 interface TurnScheduleViewProps {
   showToast: (title: string, desc?: string) => void;
+  bedId?: string;
+  isApiConnected?: boolean;
 }
 
 interface PressurePoint {
@@ -13,7 +15,11 @@ interface PressurePoint {
   note?: string;
 }
 
-export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({ showToast }) => {
+export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({
+  showToast,
+  bedId = 'bed-07',
+  isApiConnected = false,
+}) => {
   const [timeRange, setTimeRange] = useState<'8h' | '24h' | '7d'>('8h');
   const [selectedPoint, setSelectedPoint] = useState<PressurePoint | null>(null);
 

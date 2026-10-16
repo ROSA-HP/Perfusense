@@ -1,6 +1,0 @@
-{
-  "summary": "Architectural and UX implementation plan to streamline the Perfusense interface:\n- Remove the top black ticker bar above the navbar and adjust layout offsets.\n- Relocate the Zone Timers component from the Live Monitor to the dedicated Zones view, replacing existing complex alerts.\n- Expand the Live Heatmap to full-width and position the 8-hour posture history chronology directly underneath.\n- Simplify the Settings / Hardware view to isolate and showcase the 64-Piezo Cell Topology Map exclusively, removing peripheral diagnostic panels.\n- Remove the Settings button from the top navbar while preserving access through the minimized flyout sidebar.\n- Eliminate visual clutter, sample stickers, and debug artifacts for a clean, professional clinical workflow.",
-  "updatedAt": "2026-10-15T00:23:54.495804681Z",
-  "requestFeedback": true,
-  "userFacing": true
-}
