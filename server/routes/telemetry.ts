@@ -15,24 +15,26 @@ function checkDeviceKey(provided: unknown) {
 }
 
 const jsonFrame = z.object({
-  cells: z.array(z.number()).length(64),
+  cells: z.union([z.array(z.number()).length(100), z.array(z.number()).length(64)]),
   ts: z.string().datetime().optional(), // optional device timestamp (ISO); also used to replay data
 });
 
 /**
  * POST /api/telemetry/:bedId/frame   header: x-device-key
- *   JSON:   { "cells": [64 numbers 0..255], "ts": "2026-10-15T10:00:00Z" }
- *   or raw: Content-Type: application/octet-stream with exactly 64 bytes (what the ESP32 can send cheaply)
+ *   JSON:   { "cells": [100 numbers 0..255], "ts": "2026-10-15T10:00:00Z" }
+ *   or raw: Content-Type: application/octet-stream with exactly 100 bytes (or 64 bytes)
  */
 telemetryRouter.post(
   '/:bedId/frame',
-  express.raw({ type: 'application/octet-stream', limit: '1kb' }),
+  express.raw({ type: 'application/octet-stream', limit: '2kb' }),
   asyncHandler(async (req, res) => {
     checkDeviceKey(req.headers['x-device-key']);
     let cells: number[];
     let at = new Date();
     if (Buffer.isBuffer(req.body)) {
-      if (req.body.length !== 64) throw new ApiError(422, 'A raw frame must be exactly 64 bytes');
+      if (req.body.length !== 100 && req.body.length !== 64) {
+        throw new ApiError(422, 'A raw frame must be 100 bytes (or 64 bytes)');
+      }
       cells = Array.from(req.body);
     } else {
       const body = parse(jsonFrame, req.body);

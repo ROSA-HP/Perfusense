@@ -16,7 +16,7 @@ export interface PatientBed {
   countdown: string;
   isOverdue?: boolean;
   offloadDuration?: string;
-  sensorMini: number[][]; // 8x8 pressure values (0=low, 1=med, 2=warn, 3=crit)
+  sensorMini: number[][]; // 10x10 pressure values (0=low, 1=med, 2=warn, 3=crit)
   assignedRn: string;
   lastTurnTime: string;
 }

@@ -1,4 +1,4 @@
-// Maps the mat's 64 cells to the body zones the UI shows.
+// Maps the mat's cells to the body zones the UI shows (10x10 = 100 cells, backwards-compatible with 8x8).
 // This follows the UI's current layout (cell zone names). If the mat layout or the
 // zone list changes, change it here and nowhere else.
 
@@ -14,13 +14,14 @@ export type ZoneTimerName = (typeof ZONE_TIMER_NAMES)[number];
 export type Category = 'Sacrum' | 'Trochanter' | 'Heels' | 'Occiput';
 
 /** Which zone timer a cell feeds, or null if it feeds none (elbows have no cells on this mat). */
-export function timerForCell(zone: string, num: number): ZoneTimerName | null {
-  const col = (num - 1) % 8;
+export function timerForCell(zone: string, num: number, cols: number = 10): ZoneTimerName | null {
+  const col = (num - 1) % cols;
+  const mid = Math.floor(cols / 2);
   if (/^(SACRAL|COCCYX|GLUTEAL)/.test(zone)) return 'SACRUM & COCCYX';
   if (/^(HEEL|ACHILLES|PLANTAR)/.test(zone)) return 'HEELS (CALCANEUS)';
   if (zone === 'ILIAC-L') return 'LEFT TROCHANTER (HIP)';
   if (zone === 'ILIAC-R') return 'RIGHT TROCHANTER (HIP)';
-  if (zone === 'TROCHANTER') return col < 4 ? 'LEFT TROCHANTER (HIP)' : 'RIGHT TROCHANTER (HIP)';
+  if (zone === 'TROCHANTER') return col < mid ? 'LEFT TROCHANTER (HIP)' : 'RIGHT TROCHANTER (HIP)';
   if (/^SCAPULA/.test(zone)) return 'SHOULDERS (SCAPULAE)';
   if (/^OCCIPITAL/.test(zone)) return 'ELBOWS & OCCIPUT';
   return null;
@@ -52,10 +53,20 @@ export function mmHgToLevel(mmHg: number, levelMmHg: [number, number, number]): 
   return 0;
 }
 
-export function chunk8<T>(flat: T[]): T[][] {
+/** Chunks a flat array into a 2D matrix. Defaults to 10 columns for a 10x10 mat (or 8 if length is 64). */
+export function chunkGrid<T>(flat: T[], cols?: number): T[][] {
+  const c = cols ?? (flat.length === 64 ? 8 : 10);
   const rows: T[][] = [];
-  for (let i = 0; i < flat.length; i += 8) rows.push(flat.slice(i, i + 8));
+  for (let i = 0; i < flat.length; i += c) rows.push(flat.slice(i, i + c));
   return rows;
+}
+
+export function chunk10<T>(flat: T[]): T[][] {
+  return chunkGrid(flat, 10);
+}
+
+export function chunk8<T>(flat: T[]): T[][] {
+  return chunkGrid(flat);
 }
 
 /** BACK / LEFT / RIGHT group of a posture string such as "L-LATERAL 30°" or "SUPINE 0°". */

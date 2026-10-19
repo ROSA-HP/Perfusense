@@ -328,7 +328,7 @@ export default function App() {
         return;
       }
     }
-    showToast('MAT TARE COMPLETE (LOCAL)', 'Baseline zero plane re-calibrated across all 64 cells.');
+    showToast('MAT TARE COMPLETE (LOCAL)', 'Baseline zero plane re-calibrated across all 100 cells.');
   };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);

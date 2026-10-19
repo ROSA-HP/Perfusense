@@ -26,7 +26,7 @@ matsRouter.get(
     res.json({
       bedId: mat.bedId,
       cells: mat.cells,
-      matrix: mat.matrix?.length === 64 ? chunk8([...mat.matrix]) : emptyMatrix(),
+      matrix: (mat.matrix?.length === 100 || mat.matrix?.length === 64) ? chunk8([...mat.matrix]) : emptyMatrix(),
       peakMmHg: mat.peakMmHg,
       peakZone: mat.peakZone,
       frames: mat.frames,
@@ -102,7 +102,7 @@ matsRouter.post(
     });
     checks.push({
       name: 'Cell count',
-      pass: mat.cells.length === 64 && mat.rawLast.length === 64,
+      pass: (mat.cells.length === 100 || mat.cells.length === 64) && (mat.rawLast.length === 100 || mat.rawLast.length === 64),
       detail: `${mat.cells.length} cells, ${mat.rawLast.length} readings`,
     });
     const saturated = mat.rawLast.filter((v) => v >= 255).length;

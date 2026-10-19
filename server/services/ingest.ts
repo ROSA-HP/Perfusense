@@ -38,19 +38,19 @@ export async function ensureMatState(bedId: string) {
     bedId,
     cells: defaultCells(),
     zoneTimers: [],
-    matrix: Array(64).fill(0),
+    matrix: Array(100).fill(0),
   });
 }
 
 type Pending = { category: Category; locus: string; peak: number; dwell: number };
 
 /**
- * Takes one frame of 64 values (0..255, row-major) for a bed and updates everything that
+ * Takes one frame of 100 values (or 64 values, 0..255, row-major) for a bed and updates everything that
  * depends on it. Assumes one writer per bed (one mat sends its own frames).
  */
 export async function ingestFrame(bedId: string, raw: number[], at: Date = new Date()) {
-  if (raw.length !== 64 || raw.some((v) => !Number.isFinite(v) || v < 0 || v > 255)) {
-    throw new ApiError(422, 'A frame must contain 64 numbers between 0 and 255');
+  if ((raw.length !== 100 && raw.length !== 64) || raw.some((v) => !Number.isFinite(v) || v < 0 || v > 255)) {
+    throw new ApiError(422, 'A frame must contain 100 numbers between 0 and 255');
   }
   const [bed, settings] = await Promise.all([Bed.findOne({ id: bedId }), getSettings()]);
   if (!bed) throw new ApiError(404, `Unknown bed "${bedId}"`);
@@ -58,10 +58,10 @@ export async function ingestFrame(bedId: string, raw: number[], at: Date = new D
   const t = settings.telemetry;
 
   // 1. Subtract the tare baseline, then convert to pressure and level.
-  const base = mat.baselineRaw.length === 64 ? mat.baselineRaw : Array(64).fill(0);
+  const base = mat.baselineRaw.length === raw.length ? mat.baselineRaw : Array(raw.length).fill(0);
   const net = raw.map((v, i) => Math.max(0, v - base[i]));
   const loads = net.map((b) => b * t.mmHgPerByte);
-  const levels = loads.map((p) => mmHgToLevel(p, t.levelMmHg)); // flat, 64 numbers
+  const levels = loads.map((p) => mmHgToLevel(p, t.levelMmHg)); // flat numbers
 
   // 2. Cell values and the peak.
   let peak = 0;
@@ -138,7 +138,7 @@ export async function ingestFrame(bedId: string, raw: number[], at: Date = new D
   hub.broadcast('frame', {
     bedId,
     at: at.toISOString(),
-    matrix: chunk8(levels),
+    matrix: chunk8(loads.map((l) => Math.round(l * 10) / 10)),
     peakMmHg: Math.round(peak * 10) / 10,
     peakZone,
     zoneTimers: timers.map((x) => zoneTimerView(x, settings)),

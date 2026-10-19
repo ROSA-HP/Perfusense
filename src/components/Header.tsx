@@ -101,7 +101,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'bg-[#f1fcf9] text-[#1d635d] shadow-[2px_2px_0px_#121c1b] hover:bg-[#dfeae8]'
             }`}
           >
-            MAT (64)
+            MAT (100)
           </button>
         </nav>
       </div>

@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
-
+import React, { useState, useEffect, useRef } from 'react';
 import { PatientBed } from '../types';
 import { api } from '../api/client';
+import {
+  getSmoothPressureColor,
+  getLegendGradientCss,
+  CLINICAL_COLOR_STOPS,
+  normalizeToMmHg,
+} from '../utils/heatmapColors';
 
 interface LiveHeatmapViewProps {
   onOpenProtocolEdit?: () => void;
@@ -15,6 +20,33 @@ interface LiveHeatmapViewProps {
   bed?: PatientBed | null;
 }
 
+// Baseline realistic contact pressure (in mmHg) across 10x10 anatomical cells
+const defaultMmHgMatrix: number[][] = [
+  [2,  3,  5, 14, 18, 16, 12,  4,  3, 2], // Row 1: Head / Occipital
+  [3,  4, 12, 22, 25, 24, 19, 10,  4, 2], // Row 2: Cervical / Upper Trapezius
+  [4, 24, 36, 28, 20, 21, 27, 34, 22, 3], // Row 3: Scapulae & Upper Back
+  [3, 18, 30, 22, 16, 15, 21, 28, 16, 3], // Row 4: Thoracic & Mid Back
+  [3,  8, 16, 15, 14, 13, 14, 16,  7, 3], // Row 5: Lower Thoracic / Mid Spine
+  [4, 10, 14, 18, 17, 16, 17, 14,  9, 3], // Row 6: Lumbar Spine & Flanks
+  [5, 22, 35, 46, 52, 50, 44, 32, 20, 4], // Row 7: Pelvis & Upper Sacrum
+  [6, 38, 54, 68, 72, 70, 62, 48, 32, 5], // Row 8: Sacrum & Trochanter Hotspot
+  [3,  6, 12, 18, 20, 19, 17, 12,  5, 2], // Row 9: Femoral, Popliteal & Calves
+  [4,  6, 36, 48, 20, 18, 46, 34,  5, 2], // Row 10: Calcaneus / Heels
+];
+
+const cellNames = [
+  'Head / Occipital',
+  'Cervical / Upper Trapezius',
+  'Scapulae & Upper Back',
+  'Thoracic / Mid Back',
+  'Lower Thoracic / Mid Spine',
+  'Lumbar Spine & Flanks',
+  'Pelvis & Upper Sacrum',
+  'Sacrum & Trochanter Hotspot',
+  'Femoral, Popliteal & Calves',
+  'Calcaneus / Heels',
+];
+
 export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
   onOpenTurnLog,
   showToast,
@@ -25,30 +57,114 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
   onSnooze,
   bed,
 }) => {
-  // 8x8 matrix pressure levels (0=none, 1=light, 2=heavy, 3=hotspot)
-  const initialMatrix = [
-    [0, 0, 1, 1, 1, 0, 0, 0], // Row 1: Head/Neck
-    [0, 1, 2, 2, 1, 1, 0, 0], // Row 2: Shoulders
-    [0, 1, 2, 1, 1, 0, 0, 0], // Row 3: Mid Back
-    [0, 2, 3, 3, 2, 1, 0, 0], // Row 4: Sacrum / Hip Hotspot
-    [0, 1, 2, 2, 1, 0, 0, 0], // Row 5: Lower Sacrum
-    [0, 1, 1, 1, 0, 0, 0, 0], // Row 6: Thighs
-    [0, 0, 1, 1, 0, 0, 0, 0], // Row 7: Lower Legs
-    [0, 0, 2, 1, 0, 0, 0, 0], // Row 8: Heels
-  ];
+  // Local simulated pressure matrix (in continuous mmHg)
+  const [localMatrix, setLocalMatrix] = useState<number[][]>(defaultMmHgMatrix);
+  const [isLiveWaveActive, setIsLiveWaveActive] = useState<boolean>(true);
+  const [showCellNumbers, setShowCellNumbers] = useState<boolean>(false);
+  const waveTickRef = useRef<number>(0);
 
-  const currentMatrix = (liveMatrix && liveMatrix.length === 8) ? liveMatrix : initialMatrix;
-  const currentPeak = peakPressure ?? 68.4;
-  const currentZone = peakZone || 'SACRUM & TROCHANTER';
-
-  const [selectedCell, setSelectedCell] = useState<{ r: number; c: number; val: number } | null>({
-    r: 3,
-    c: 2,
-    val: 3,
+  // Selected cell for fine-tuning & inspection
+  const [selectedCell, setSelectedCell] = useState<{ r: number; c: number; mmHg: number }>({
+    r: 7,
+    c: 4,
+    mmHg: 72,
   });
 
   const [turnCompleted, setTurnCompleted] = useState<boolean>(false);
   const [snoozeActive, setSnoozeActive] = useState<boolean>(false);
+
+  // When liveMatrix from backend changes, sync it
+  useEffect(() => {
+    if (liveMatrix && liveMatrix.length === 8) {
+      const converted = liveMatrix.map((row) =>
+        row.map((val) => normalizeToMmHg(val))
+      );
+      setLocalMatrix(converted);
+    }
+  }, [liveMatrix]);
+
+  // Subtle physiological respiration / contact micro-oscillation in standalone mode
+  useEffect(() => {
+    if (isApiConnected || !isLiveWaveActive) return;
+
+    const interval = setInterval(() => {
+      waveTickRef.current += 1;
+      const t = waveTickRef.current;
+
+      setLocalMatrix((prev) => {
+        return prev.map((row, r) =>
+          row.map((baseVal, c) => {
+            if (baseVal < 8) {
+              // Minimal contact cells stay close to zero with minor drift
+              const drift = Math.sin(t * 0.12 + r + c) * 0.8;
+              return Math.max(0, Math.round((baseVal + drift) * 10) / 10);
+            }
+            // Loaded anatomical contact areas experience smooth breathing modulation (±2 to ±4.5 mmHg)
+            const modulation = Math.sin(t * 0.16 + r * 0.6 + c * 0.4) * 3.2;
+            const microSecondary = Math.cos(t * 0.28 + r * 0.3) * 1.4;
+            const nextVal = Math.max(0, Math.min(85, baseVal + modulation + microSecondary));
+            return Math.round(nextVal * 10) / 10;
+          })
+        );
+      });
+    }, 700);
+
+    return () => clearInterval(interval);
+  }, [isApiConnected, isLiveWaveActive]);
+
+  // Determine current effective matrix and peak
+  const currentMatrix = localMatrix;
+
+  // Calculate live peak and location
+  let computedPeak = 0;
+  let computedPeakR = 3;
+  let computedPeakC = 2;
+  currentMatrix.forEach((row, r) => {
+    row.forEach((v, c) => {
+      if (v > computedPeak) {
+        computedPeak = v;
+        computedPeakR = r;
+        computedPeakC = c;
+      }
+    });
+  });
+
+  const currentPeak = peakPressure ?? computedPeak;
+  const currentZone = peakZone || (cellNames[computedPeakR] ? cellNames[computedPeakR].toUpperCase() : 'SACRUM & TROCHANTER');
+
+  // Keep selectedCell pressure synchronized
+  useEffect(() => {
+    if (currentMatrix[selectedCell.r] && typeof currentMatrix[selectedCell.r][selectedCell.c] === 'number') {
+      setSelectedCell((prev) => ({
+        ...prev,
+        mmHg: currentMatrix[prev.r][prev.c],
+      }));
+    }
+  }, [currentMatrix, selectedCell.r, selectedCell.c]);
+
+  // User manually tunes pressure on the selected cell
+  const handleUpdateCellPressure = (newMmHg: number) => {
+    const val = Math.max(0, Math.min(85, newMmHg));
+    setSelectedCell((prev) => ({ ...prev, mmHg: val }));
+    setLocalMatrix((prev) => {
+      const copy = prev.map((row) => [...row]);
+      copy[selectedCell.r][selectedCell.c] = val;
+      // Slight soft falloff to direct neighbors (smooth fluid distribution)
+      const neighbors = [
+        [selectedCell.r - 1, selectedCell.c],
+        [selectedCell.r + 1, selectedCell.c],
+        [selectedCell.r, selectedCell.c - 1],
+        [selectedCell.r, selectedCell.c + 1],
+      ];
+      neighbors.forEach(([nr, nc]) => {
+        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && copy[nr][nc] > 6) {
+          const delta = (val - prev[selectedCell.r][selectedCell.c]) * 0.22;
+          copy[nr][nc] = Math.max(0, Math.min(80, Math.round((copy[nr][nc] + delta) * 10) / 10));
+        }
+      });
+      return copy;
+    });
+  };
 
   const handleDoneTurned = () => {
     setTurnCompleted(true);
@@ -95,25 +211,16 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
     showToast('AUDIT LOG EXPORTED', 'Perfusense_EHR_Bed07_Audit.csv downloaded.');
   };
 
-  const cellNames = [
-    'Head / Cervical',
-    'Shoulders / Acromion',
-    'Mid Back / Thoracic',
-    'Sacrum & Trochanter',
-    'Lower Sacrum / Gluteal',
-    'Femoral / Thighs',
-    'Lower Legs / Calves',
-    'Calcaneus / Heels',
-  ];
+  const selectedStyle = getSmoothPressureColor(selectedCell.mmHg);
 
   return (
     <div className="flex flex-col gap-3.5 sm:gap-4 select-none w-full max-w-[1400px] mx-auto">
-      {/* Top Metadata Status Strip - Flex wrap friendly on mobile */}
+      {/* Top Metadata Status Strip */}
       <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b-[2px] border-[#121c1b]">
         <div className="flex items-center flex-wrap gap-1.5 sm:gap-2">
-          <div className="bg-[#121c1b] text-[#f1fcf9] px-2 sm:px-2.5 py-0.5 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] sm:shadow-[2px_2px_0px_#121c1b] font-label-mono-sm uppercase tracking-wider flex items-center gap-1 text-[9px] sm:text-[10px]">
+          <div className="bg-[#121c1b] text-[#f1fcf9] px-2 sm:px-2.5 py-0.5 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] sm:shadow-[2px_2px_0px_#121c1b] font-label-mono-sm uppercase tracking-wider flex items-center gap-1.5 text-[9px] sm:text-[10px]">
             <span className="w-1.5 h-1.5 bg-[#adefe7] animate-ping inline-block"></span>
-            <span>{isApiConnected ? 'FEED // LIVE API' : 'FEED // STANDALONE'}</span>
+            <span>{isApiConnected ? 'FEED // LIVE API' : 'FEED // SMOOTH TELEMETRY'}</span>
           </div>
           <div className="bg-[#ffffff] text-[#121c1b] px-2 sm:px-2.5 py-0.5 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] sm:shadow-[2px_2px_0px_#121c1b] font-label-mono-sm uppercase font-bold text-[9px] sm:text-[10px]">
             PATIENT: {bed?.patientName ? bed.patientName.toUpperCase() : 'ELEANOR V. (AGE 76)'}
@@ -124,131 +231,250 @@ export const LiveHeatmapView: React.FC<LiveHeatmapViewProps> = ({
         </div>
 
         <div className="flex items-center justify-between sm:justify-end gap-2 font-label-mono-sm text-[9px] sm:text-[10px] text-[#121c1b]">
-          <span>MAT: SENSO-GRID v4.1</span>
-          <span className="opacity-40">/</span>
-          <span>{isApiConnected ? 'BACKEND: CONNECTED' : 'LATENCY: 14MS'}</span>
+          <span className="hidden xs:inline">MAT: SENSO-GRID 100-CH (10×10)</span>
+          <span className="hidden xs:inline opacity-40">/</span>
+          <span>GRADIENT: 14-STOP SMOOTH</span>
         </div>
       </div>
 
       {/* FULL-WIDTH LIVE HEATMAP CARD */}
       <div className="w-full bg-[#ffffff] border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-3 sm:p-5 flex flex-col gap-3.5 sm:gap-4">
-        {/* Card Header */}
-        <div className="flex items-center justify-between pb-2 border-b-[2px] border-[#121c1b] gap-2">
+        {/* Card Header & Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b-[2px] border-[#121c1b] gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-3 h-3 sm:w-3.5 sm:h-3.5 bg-[#1d635d] shrink-0"></div>
+            <div className="w-3.5 h-3.5 bg-[#1d635d] border border-[#121c1b] shrink-0"></div>
             <h2 className="font-headline-lg text-[#121c1b] tracking-tight uppercase text-xs sm:text-base font-bold truncate">
-              LIVE CONTACT PRESSURE HEATMAP
+              SMOOTH SPECTRUM CONTACT HEATMAP
             </h2>
           </div>
-          <div className="font-label-mono-sm text-[10px] sm:text-xs text-[#1d635d] font-bold shrink-0">
-            {bed?.bedNumber || 'BED 07'} // LIVE
+
+          {/* Interactive Mode & Display Toggles */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <button
+              onClick={() => setShowCellNumbers((prev) => !prev)}
+              className={`px-2 py-1 text-[9px] sm:text-[10px] font-label-mono-sm font-bold uppercase border-[1.5px] border-[#121c1b] transition-all cursor-pointer ${
+                showCellNumbers
+                  ? 'bg-[#121c1b] text-[#f1fcf9]'
+                  : 'bg-[#f1fcf9] text-[#121c1b] hover:bg-[#adefe7]'
+              }`}
+              title="Toggle numeric mmHg overlay inside matrix cells"
+            >
+              {showCellNumbers ? '✓ mmHg NUMBERS' : 'NUMBERS'}
+            </button>
+
+            <button
+              onClick={() => {
+                setIsLiveWaveActive((prev) => !prev);
+                showToast(
+                  !isLiveWaveActive ? 'LIVE WAVE RESUMED' : 'LIVE WAVE PAUSED',
+                  !isLiveWaveActive
+                    ? 'Simulating dynamic patient respiration and tissue micro-movement.'
+                    : 'Pressure held stationary for precise inspection.'
+                );
+              }}
+              className={`px-2 py-1 text-[9px] sm:text-[10px] font-label-mono-sm font-bold uppercase border-[1.5px] border-[#121c1b] transition-all cursor-pointer flex items-center gap-1 ${
+                isLiveWaveActive
+                  ? 'bg-[#1d635d] text-white'
+                  : 'bg-[#f1fcf9] text-[#121c1b] hover:bg-[#e1f6f1]'
+              }`}
+              title="Toggle continuous smooth physiologic pressure variation"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full inline-block ${isLiveWaveActive ? 'bg-[#adefe7] animate-pulse' : 'bg-gray-400'}`}></span>
+              <span>{isLiveWaveActive ? 'LIVE WAVE: ON' : 'WAVE: PAUSED'}</span>
+            </button>
           </div>
         </div>
 
         {/* Heatmap Grid & Side Details in Responsive Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-center">
-          {/* Centered 8x8 Tactile Matrix */}
+          {/* Centered 10x10 Tactile Matrix */}
           <div className="lg:col-span-6 flex flex-col items-center justify-center w-full">
-            <div className="bg-[#ffffff] p-2.5 sm:p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] sm:shadow-[3px_3px_0px_#121c1b] w-full max-w-[310px] xs:max-w-[340px] sm:max-w-[380px] mx-auto">
-              <div className="grid grid-cols-8 gap-1 sm:gap-1.5 aspect-square w-full">
+            <div className="bg-[#f8fdfc] p-2.5 sm:p-3.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] sm:shadow-[3px_3px_0px_#121c1b] w-full max-w-[340px] xs:max-w-[380px] sm:max-w-[430px] mx-auto">
+              {/* Matrix Label */}
+              <div className="flex justify-between items-center text-[9px] sm:text-[10px] font-label-mono-sm text-[#3f4947] font-bold uppercase pb-1.5 mb-1 border-b border-[#121c1b]/20">
+                <span>HEAD (ANTERIOR) ↑</span>
+                <span>100-CELL MATRIX (10×10)</span>
+              </div>
+
+              {/* Smooth 10x10 Clickable Grid */}
+              <div className={`grid ${currentMatrix[0]?.length === 8 ? 'grid-cols-8' : 'grid-cols-10'} gap-0.5 sm:gap-1 aspect-square w-full`}>
                 {currentMatrix.map((row, rIdx) =>
-                  row.map((cellVal, cIdx) => {
-                    const isSelected = selectedCell?.r === rIdx && selectedCell?.c === cIdx;
-
-                    let cellBg = 'bg-[#f1fcf9] border border-[#121c1b]/30';
-                    let content = null;
-
-                    if (cellVal === 1) {
-                      cellBg = 'bg-[#a3cfc9] border border-[#121c1b]';
-                    } else if (cellVal === 2) {
-                      cellBg = 'bg-[#1d635d] border border-[#121c1b]';
-                    } else if (cellVal === 3) {
-                      cellBg =
-                        'bg-[#8b2635] border-[2px] border-[#121c1b] ring-2 ring-[#d97757] relative flex items-center justify-center';
-                      content = <span className="w-1.5 h-1.5 bg-[#ffffff] rounded-full inline-block"></span>;
-                    }
+                  row.map((pressureVal, cIdx) => {
+                    const isSelected = selectedCell.r === rIdx && selectedCell.c === cIdx;
+                    const style = getSmoothPressureColor(pressureVal);
 
                     return (
                       <button
                         key={`${rIdx}-${cIdx}`}
-                        onClick={() => setSelectedCell({ r: rIdx, c: cIdx, val: cellVal })}
-                        className={`transition-transform hover:scale-110 active:scale-95 cursor-pointer touch-manipulation ${cellBg} ${
-                          isSelected ? 'ring-2 ring-[#1d635d] z-10' : ''
+                        onClick={() => {
+                          setSelectedCell({ r: rIdx, c: cIdx, mmHg: pressureVal });
+                        }}
+                        style={{
+                          backgroundColor: style.bg,
+                          color: style.textColor,
+                        }}
+                        className={`relative aspect-square flex flex-col items-center justify-center cursor-pointer touch-manipulation border-[1.5px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] transition-all duration-500 ease-out hover:scale-110 hover:z-20 active:scale-95 ${
+                          isSelected ? 'ring-3 ring-[#121c1b] scale-105 z-10 shadow-[2px_2px_0px_#121c1b]' : ''
                         }`}
-                        title={`Row ${rIdx + 1}, Col ${cIdx + 1} (${cellNames[rIdx]}) - Level: ${cellVal}`}
+                        title={`Row ${rIdx + 1}, Col ${cIdx + 1} (${cellNames[rIdx]}) - ${style.mmHg} mmHg [${style.label}]`}
                       >
-                        {content}
+                        {/* High-Pressure Hotspot Indicator Badge */}
+                        {style.isHot && (
+                          <span className="w-1.5 h-1.5 bg-[#ffffff] rounded-full shadow-[0_0_4px_#ffffff] animate-ping absolute inset-auto"></span>
+                        )}
+
+                        {/* Optional Numeric Overlay */}
+                        {showCellNumbers ? (
+                          <span className="font-label-mono-sm text-[8px] xs:text-[9px] font-extrabold leading-none pointer-events-none">
+                            {Math.round(style.mmHg)}
+                          </span>
+                        ) : isSelected ? (
+                          <span className="font-label-mono-sm text-[7px] xs:text-[8px] font-bold uppercase leading-none pointer-events-none">
+                            {Math.round(style.mmHg)}m
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })
                 )}
               </div>
+
               <div className="mt-2 text-center font-label-mono-sm text-[#3f4947] uppercase tracking-widest text-[9px] sm:text-[10px] font-bold">
                 FOOT OF BED ↓
               </div>
             </div>
           </div>
 
-          {/* Side Telemetry Details */}
+          {/* Side Telemetry Details & Color Spectrum Inspector */}
           <div className="lg:col-span-6 flex flex-col gap-2.5 sm:gap-3 w-full">
             {/* Position AI Detection Card */}
             <div className="bg-[#ebf6f4] text-[#121c1b] p-2.5 sm:p-3 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b]">
-              <div className="font-label-mono-sm uppercase text-[#121c1b]/80 text-[9px] sm:text-[10px] font-bold">
-                ESTIMATED PATIENT POSTURE
+              <div className="flex items-center justify-between">
+                <span className="font-label-mono-sm uppercase text-[#121c1b]/80 text-[9px] sm:text-[10px] font-bold">
+                  ESTIMATED PATIENT POSTURE
+                </span>
+                <span className="font-label-mono-sm text-[9px] bg-[#ffffff] px-1.5 py-0.5 border border-[#121c1b] font-bold">
+                  CONFIDENCE: 94.2%
+                </span>
               </div>
-              <div className="font-headline-sm text-[#1d635d] mt-0.5 uppercase tracking-tight font-bold text-xs sm:text-sm">
+              <div className="font-headline-sm text-[#1d635d] mt-1 uppercase tracking-tight font-bold text-xs sm:text-sm">
                 {bed?.posture || 'RIGHT 30° LATERAL TILT'}
               </div>
-              <div className="mt-1 font-label-mono-sm text-[#121c1b] bg-[#ffffff] px-2 py-0.5 border border-[#121c1b] inline-block font-bold text-[9px] sm:text-[10px]">
-                CONFIDENCE: 94.2%
+            </div>
+
+            {/* Continuous Smooth Multi-Color Spectrum Legend */}
+            <div className="bg-[#ffffff] border-[2px] border-[#121c1b] p-2.5 sm:p-3 shadow-[2px_2px_0px_#121c1b] flex flex-col gap-2">
+              <div className="flex items-center justify-between border-b border-[#121c1b] pb-1">
+                <span className="font-label-mono-sm text-[#121c1b] uppercase font-bold text-[9px] sm:text-[10px]">
+                  CONTINUOUS PRESSURE SPECTRUM
+                </span>
+                <span className="font-label-mono-sm text-[9px] text-[#1d635d] font-bold">
+                  4 MAIN ANCHORS + 10 INTERMEDIATE TINTS
+                </span>
+              </div>
+
+              {/* Continuous Gradient Bar */}
+              <div className="w-full">
+                <div
+                  className="w-full h-4 sm:h-5 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b]"
+                  style={{ background: getLegendGradientCss() }}
+                  title="Smooth color gradient across all pressure levels"
+                ></div>
+
+                {/* 4 Main Anchor Threshold Markers */}
+                <div className="grid grid-cols-4 mt-1 font-label-mono-sm text-[8px] xs:text-[9px] text-[#121c1b] font-bold text-center">
+                  <div className="text-left flex flex-col">
+                    <span className="text-[#3f4947]">0-15 mmHg</span>
+                    <span className="text-[#121c1b]">RESTING</span>
+                  </div>
+                  <div className="text-left flex flex-col pl-1 sm:pl-2">
+                    <span className="text-[#3f4947]">16-32 mmHg</span>
+                    <span className="text-[#1d635d]">LIGHT</span>
+                  </div>
+                  <div className="text-left flex flex-col pl-1 sm:pl-2">
+                    <span className="text-[#3f4947]">33-55 mmHg</span>
+                    <span className="text-[#1d635d]">HEAVY</span>
+                  </div>
+                  <div className="text-right flex flex-col">
+                    <span className="text-[#8b2635]">&gt;55 mmHg</span>
+                    <span className="text-[#8b2635]">HOTSPOT</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Intermediate Color Variation Swatch Strip */}
+              <div className="mt-1 pt-1.5 border-t border-[#121c1b]/20">
+                <div className="text-[8px] sm:text-[9px] font-label-mono-sm text-[#3f4947] uppercase font-bold mb-1">
+                  CLICK VARIATION PRESET TO TEST SELECTED SENSOR:
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+                  {[
+                    { mmHg: 4, label: '04m (Rest)' },
+                    { mmHg: 16, label: '16m (Light)' },
+                    { mmHg: 28, label: '28m (Teal)' },
+                    { mmHg: 40, label: '40m (Heavy)' },
+                    { mmHg: 52, label: '52m (Amber)' },
+                    { mmHg: 60, label: '60m (Coral)' },
+                    { mmHg: 68, label: '68m (Ruby)' },
+                  ].map((preset) => {
+                    const presetStyle = getSmoothPressureColor(preset.mmHg);
+                    return (
+                      <button
+                        key={preset.mmHg}
+                        onClick={() => handleUpdateCellPressure(preset.mmHg)}
+                        style={{
+                          backgroundColor: presetStyle.bg,
+                          color: presetStyle.textColor,
+                        }}
+                        className="py-1 px-1 border border-[#121c1b] font-label-mono-sm text-[8px] font-bold uppercase truncate text-center shadow-[1px_1px_0px_#121c1b] transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+                        title={`Set selected cell to ${preset.mmHg} mmHg (${presetStyle.label})`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Discrete 4-Swatch Color-Blind Legend */}
-            <div className="bg-[#ffffff] border-[2px] border-[#121c1b] p-2.5 sm:p-3 shadow-[2px_2px_0px_#121c1b] flex flex-col gap-1.5">
-              <div className="font-label-mono-sm text-[#121c1b] uppercase border-b border-[#121c1b] pb-1 font-bold text-[9px] sm:text-[10px]">
-                PRESSURE RANGE LEGEND
+            {/* Selected Sensor & Interactive Tuning Card */}
+            <div className="border-[2px] border-[#121c1b] bg-[#ebf6f4] p-2.5 sm:p-3 font-label-mono-sm text-[#121c1b] space-y-1.5 text-[10px] sm:text-xs">
+              <div className="flex justify-between items-center pb-1 border-b border-[#121c1b]/30">
+                <span className="font-bold">INSPECTED SENSOR:</span>
+                <span className="font-bold text-[#1d635d]">
+                  R{selectedCell.r + 1}-C{selectedCell.c + 1} [{cellNames[selectedCell.r]}]
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[10px] sm:text-[11px]">
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-[#f1fcf9] border border-[#121c1b] inline-block shrink-0"></span>
-                  <span className="font-label-mono-sm text-[#121c1b] leading-tight">NONE (0-15)</span>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-[#a3cfc9] border border-[#121c1b] inline-block shrink-0"></span>
-                  <span className="font-label-mono-sm text-[#121c1b] leading-tight">LIGHT (16-32)</span>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-[#1d635d] border border-[#121c1b] inline-block shrink-0"></span>
-                  <span className="font-label-mono-sm text-[#121c1b] leading-tight">HEAVY (33-55)</span>
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-[#8b2635] border border-[#121c1b] inline-block shrink-0 flex items-center justify-center">
-                    <span className="w-1 h-1 bg-[#ffffff]"></span>
-                  </span>
-                  <span className="font-label-mono-sm text-[#8b2635] font-bold leading-tight">
-                    HOT (&gt;55)
-                  </span>
-                </div>
-              </div>
-            </div>
 
-            {/* Mat Pressure Vector Details */}
-            <div className="border-[2px] border-[#121c1b] bg-[#ebf6f4] p-2.5 sm:p-3 font-label-mono-sm text-[#121c1b] space-y-1 text-[10px] sm:text-xs">
-              <div className="flex justify-between items-center">
-                <span>ACTIVE PIEZOS:</span>
-                <span className="font-bold text-[#1d635d]">64/64 OPERATIONAL</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="w-4 h-4 border border-[#121c1b] inline-block shadow-[1px_1px_0px_#121c1b]"
+                    style={{ backgroundColor: selectedStyle.bg }}
+                  ></span>
+                  <span className="font-bold">{selectedStyle.mmHg} mmHg</span>
+                  <span className="text-[9px] opacity-75">({selectedStyle.label})</span>
+                </div>
+                <div className="font-bold text-[#8b2635]">
+                  PEAK: {currentPeak} mmHg ({currentZone})
+                </div>
               </div>
-              <div className="flex justify-between items-center">
-                <span>PEAK CONTACT FORCE:</span>
-                <span className="font-bold text-[#8b2635]">{currentPeak} mmHg ({currentZone})</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>SELECTED SENSOR:</span>
-                <span className="font-bold truncate max-w-[170px] sm:max-w-none text-right">
-                  {selectedCell
-                    ? `R${selectedCell.r + 1}-C${selectedCell.c + 1} [${cellNames[selectedCell.r]}]`
-                    : 'R4-C3 [SACRUM]'}
+
+              {/* Real-time Pressure Slider for Selected Sensor */}
+              <div className="pt-1 flex items-center gap-2">
+                <span className="text-[9px] font-bold text-[#3f4947] shrink-0">ADJUST PRESSURE:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="80"
+                  step="0.5"
+                  value={selectedCell.mmHg}
+                  onChange={(e) => handleUpdateCellPressure(parseFloat(e.target.value))}
+                  className="w-full accent-[#1d635d] cursor-pointer"
+                  title="Drag slider to smoothly transition colors between 0 and 80 mmHg"
+                />
+                <span className="text-[10px] font-bold w-12 text-right shrink-0">
+                  {Math.round(selectedCell.mmHg)} mmHg
                 </span>
               </div>
             </div>

@@ -32,7 +32,7 @@ export function startSimulator(periodMs = 500) {
   const tick = async () => {
     for (const bed of beds) {
       const levels: number[] = bed.sensorMini ?? [];
-      if (levels.length !== 64) continue;
+      if (levels.length !== 100 && levels.length !== 64) continue;
       const frame = levels.map((lvl) => {
         const base = (LEVEL_MMHG[lvl] ?? 0) / mmHgPerByte;
         const noise = base === 0 ? Math.random() * 4 : (Math.random() - 0.5) * 16;

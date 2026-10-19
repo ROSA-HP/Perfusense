@@ -44,7 +44,12 @@ export function zoneTimerView(
 export function bedView(bed: any, mat: any | null, settings: Settings, now: Date): BedView {
   const fresh = isFresh(mat?.lastFrameAt, settings, now);
   const peak = fresh ? Math.round(mat.peakMmHg) : Math.round(bed.peakPressure ?? 0);
-  const flat: number[] | undefined = fresh && mat?.matrix?.length === 64 ? mat.matrix : bed.sensorMini?.length === 64 ? bed.sensorMini : undefined;
+  const flat: number[] | undefined =
+    fresh && (mat?.matrix?.length === 100 || mat?.matrix?.length === 64)
+      ? mat.matrix
+      : (bed.sensorMini?.length === 100 || bed.sensorMini?.length === 64)
+      ? bed.sensorMini
+      : undefined;
   const matrix: number[][] = flat ? chunk8([...flat]) : emptyMatrix();
 
   let pressureLabel: string = bed.pressureLabel || 'PEAK LOAD';
@@ -131,8 +136,8 @@ export function bedView(bed: any, mat: any | null, settings: Settings, now: Date
   };
 }
 
-export function emptyMatrix(): number[][] {
-  return Array.from({ length: 8 }, () => Array(8).fill(0));
+export function emptyMatrix(size = 10): number[][] {
+  return Array.from({ length: size }, () => Array(size).fill(0));
 }
 
 /** The audit log row in the shape the UI's AuditLogItem expects, plus extra fields. */

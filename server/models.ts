@@ -58,14 +58,14 @@ const timerSchema = new Schema(
   { _id: false },
 );
 
-// Live state of one 64-cell mat. One document per bed, updated on every frame.
+// Live state of one 100-cell mat. One document per bed, updated on every frame.
 const matSchema = new Schema(
   {
     bedId: { type: String, required: true, unique: true },
     cells: [cellSchema],
-    baselineRaw: { type: [Number], default: () => Array(64).fill(0) }, // set by "tare"
-    rawLast: { type: [Number], default: () => Array(64).fill(0) },
-    matrix: { type: [Number], default: undefined }, // 8x8 levels 0..3, stored flat (64 numbers)
+    baselineRaw: { type: [Number], default: () => Array(100).fill(0) }, // set by "tare"
+    rawLast: { type: [Number], default: () => Array(100).fill(0) },
+    matrix: { type: [Number], default: undefined }, // 10x10 levels 0..3, stored flat (100 numbers)
     peakMmHg: { type: Number, default: 0 },
     peakZone: { type: String, default: '' },
     zoneTimers: [timerSchema],

@@ -94,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'sensor-mat-hardware' as ActiveTab,
       label: 'Sensor Mat Hardware',
       icon: 'memory',
-      badge: '64 CH',
+      badge: '100 CH',
     },
   ];
 

@@ -123,8 +123,14 @@ bedsRouter.get(
   asyncHandler(async (req, res) => {
     await findBedOr404(req.params.id);
     const [mat, settings] = await Promise.all([MatState.findOne({ bedId: req.params.id }).lean(), getSettings()]);
+    const cellLoads = mat?.cells?.map((c: any) => c.load ?? 0);
     res.json({
-      matrix: mat?.matrix?.length === 64 ? chunk8([...mat.matrix]) : emptyMatrix(),
+      matrix:
+        cellLoads && (cellLoads.length === 100 || cellLoads.length === 64) && cellLoads.some((v: number) => v > 0)
+          ? chunk8(cellLoads)
+          : (mat?.matrix?.length === 100 || mat?.matrix?.length === 64)
+          ? chunk8([...mat.matrix])
+          : emptyMatrix(),
       peakMmHg: mat?.peakMmHg ?? 0,
       peakZone: mat?.peakZone ?? '',
       lastFrameAt: mat?.lastFrameAt ?? null,
