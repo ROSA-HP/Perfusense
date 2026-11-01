@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PatientBed } from '../types';
 import type { Settings } from '../api/client';
-import { Button, StripHeader } from './ui';
+import { Button } from './ui';
 
 export type ToastState = { title: string; desc?: string; tone: 'ok' | 'error' | 'alert' };
 
@@ -16,6 +16,9 @@ interface ModalsProps {
   isProtocolOpen: boolean;
   onCloseProtocol: () => void;
   onSaveProtocol: (cadenceMin: number) => void;
+  inspectBed: PatientBed | null;
+  onCloseInspect: () => void;
+  onMonitorBed: (bedId: string) => void;
   toast: ToastState | null;
   onDismissToast: () => void;
 }
@@ -30,23 +33,21 @@ function Dialog({ title, onClose, children }: { title: string; onClose: () => vo
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-[#121c1b]/60 anim-fade" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-[#121c1b]/60" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white border-[3px] border-[#121c1b] shadow-[8px_8px_0px_#121c1b] max-w-lg w-full max-h-[92vh] overflow-y-auto anim-pop"
+        className="bg-[#ede8dc] border-[4px] border-[#121c1b] shadow-[8px_8px_0px_#121c1b] max-w-lg w-full p-4 sm:p-5 max-h-[92vh] overflow-y-auto"
       >
-        <StripHeader
-          label={title}
-          right={
-            <button onClick={onClose} aria-label="Close" className="w-7 h-7 border-[2px] border-[#121c1b] bg-white text-[#121c1b] hover:bg-[#adefe7]">
-              ✕
-            </button>
-          }
-        />
-        <div className="p-4 sm:p-5">{children}</div>
+        <div className="flex justify-between items-center pb-3 mb-3 border-b-[3px] border-[#121c1b]">
+          <h3 className="font-bold uppercase text-sm truncate">{title}</h3>
+          <button onClick={onClose} aria-label="Close" className="w-8 h-8 border-[2px] border-[#121c1b] bg-white hover:bg-[#ebf6f4]">
+            ✕
+          </button>
+        </div>
+        {children}
       </div>
     </div>
   );
@@ -80,6 +81,9 @@ export const Modals: React.FC<ModalsProps> = ({
   isProtocolOpen,
   onCloseProtocol,
   onSaveProtocol,
+  inspectBed,
+  onCloseInspect,
+  onMonitorBed,
   toast,
   onDismissToast,
 }) => {
@@ -115,9 +119,9 @@ export const Modals: React.FC<ModalsProps> = ({
   return (
     <>
       {toast && (
-        <div key={toast.title + (toast.desc ?? "")}
+        <div
           role={toast.tone === 'ok' ? 'status' : 'alert'}
-          className={`fixed bottom-20 md:bottom-6 right-3 left-3 sm:left-auto z-50 max-w-md p-3 border-[3px] border-[#121c1b] shadow-[5px_5px_0px_#121c1b] flex items-start gap-3 anim-slide-up ${
+          className={`fixed bottom-20 md:bottom-6 right-3 left-3 sm:left-auto z-50 max-w-md p-3 border-[3px] border-[#121c1b] shadow-[5px_5px_0px_#121c1b] flex items-start gap-3 ${
             toast.tone === 'error' ? 'bg-[#8b2635] text-white' : toast.tone === 'alert' ? 'bg-[#d97757] text-white' : 'bg-[#121c1b] text-[#f1fcf9]'
           }`}
         >
@@ -260,6 +264,35 @@ export const Modals: React.FC<ModalsProps> = ({
         </Dialog>
       )}
 
+      {inspectBed && (
+        <Dialog title={`${inspectBed.bedNumber} · ${inspectBed.pod}`} onClose={onCloseInspect}>
+          <h4 className="font-bold uppercase text-base mb-3">{inspectBed.patientName}</h4>
+          <dl className="grid grid-cols-2 gap-2 mb-3 font-label-mono-sm text-xs">
+            {[
+              ['Patient ID', inspectBed.patientId],
+              ['Braden', `${inspectBed.bradenScore} (${inspectBed.bradenRisk})`],
+              ['Position', inspectBed.posture],
+              ['Peak', `${inspectBed.peakPressure} mmHg`],
+              ['Status', inspectBed.statusLabel],
+              ['Next turn', inspectBed.countdown],
+              ['Last turn', inspectBed.lastTurnTime],
+              ['RN', inspectBed.assignedRn || '—'],
+            ].map(([k, v]) => (
+              <div key={k} className="bg-white border-[2px] border-[#121c1b] p-2 min-w-0">
+                <dt className="text-[9px] text-[#3f4947] uppercase">{k}</dt>
+                <dd className="font-bold truncate">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-[11px] text-[#3f4947] mb-3">Turn every {settings.protocol.cadenceMin} min (ward setting).</p>
+          <div className="flex flex-col-reverse xs:flex-row justify-end gap-2">
+            <Button onClick={onCloseInspect}>Close</Button>
+            <Button tone="teal" onClick={() => onMonitorBed(inspectBed.id)}>
+              Monitor this bed
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </>
   );
 };
