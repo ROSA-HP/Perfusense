@@ -1,17 +1,39 @@
-// Small shared building blocks so every page uses the same neo-brutalist look.
+// Shared building blocks. The look follows the PerfuSense poster: white cards with an ink
+// border, section titles marked by a carmine square over a rule, deep-teal strip headers
+// with a numbered box, mono caps chips.
 import React from 'react';
 import { legendBands, legendGradientCss, BAND_LABEL, pressureStyle } from '../utils/heatmapColors';
 
 export const INK = '#121c1b';
+export const DEEP_TEAL = '#174f4a'; // poster strip headers and table heads (a shade under Surgical Teal)
+
+/** Poster section title: carmine square, bold heading, rule underneath. */
+export function SectionTitle({ children, action, as: Tag = 'h2' }: { children: React.ReactNode; action?: React.ReactNode; as?: 'h1' | 'h2' }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 mb-3 border-b-[2px] border-[#121c1b]">
+      <Tag className={`flex items-center gap-2 font-bold tracking-tight ${Tag === 'h1' ? 'text-lg sm:text-2xl' : 'text-base sm:text-lg'}`}>
+        <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-[#8b2635] shrink-0" aria-hidden />
+        {children}
+      </Tag>
+      {action && <div className="flex items-center gap-2 flex-wrap">{action}</div>}
+    </div>
+  );
+}
 
 export function Card({
   children,
   className = '',
   tone = 'white',
+  title,
+  action,
+  style,
 }: {
   children: React.ReactNode;
   className?: string;
   tone?: 'white' | 'slate' | 'parchment' | 'teal' | 'carmine';
+  title?: React.ReactNode;
+  action?: React.ReactNode;
+  style?: React.CSSProperties;
 }) {
   const bg = {
     white: 'bg-white text-[#121c1b]',
@@ -20,21 +42,76 @@ export function Card({
     teal: 'bg-[#1d635d] text-white',
     carmine: 'bg-[#8b2635] text-[#f1fcf9]',
   }[tone];
-  return <section className={`${bg} border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] p-3 sm:p-4 ${className}`}>{children}</section>;
+  return (
+    <section style={style} className={`${bg} border-[2.5px] border-[#121c1b] shadow-[4px_4px_0px_rgba(18,28,27,0.85)] p-3 sm:p-4 ${className}`}>
+      {title && <SectionTitle action={action}>{title}</SectionTitle>}
+      {children}
+    </section>
+  );
 }
 
+/** Poster roadmap-card header: a deep-teal bar with a numbered box and a mono caps label. */
+export function StripHeader({ n, label, right }: { n?: React.ReactNode; label: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 text-white border-b-[2px] border-[#121c1b]" style={{ background: DEEP_TEAL }}>
+      {n !== undefined && <span className="min-w-[22px] h-[22px] px-1 bg-white text-[#121c1b] border-[2px] border-[#121c1b] flex items-center justify-center font-label-mono-sm">{n}</span>}
+      <span className="font-label-mono-md uppercase truncate">{label}</span>
+      {right && <span className="ml-auto shrink-0">{right}</span>}
+    </div>
+  );
+}
+
+/** Page title as a poster section: white card, carmine marker, rule, actions on the right. */
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <Card tone="parchment" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="w-3.5 h-3.5 bg-[#1d635d] shrink-0" />
-          <h1 className="font-bold uppercase tracking-tight text-sm sm:text-lg">{title}</h1>
-        </div>
-        {subtitle && <p className="text-[#3f4947] text-[11px] sm:text-xs mt-0.5">{subtitle}</p>}
+    <section className="bg-white border-[2.5px] border-[#121c1b] shadow-[4px_4px_0px_rgba(18,28,27,0.85)] px-3 sm:px-4 pt-3 pb-2.5">
+      <SectionTitle as="h1" action={children}>
+        {title}
+      </SectionTitle>
+      {subtitle && <p className="font-label-mono-sm text-[#3f4947] -mt-1.5">{subtitle}</p>}
+    </section>
+  );
+}
+
+/** The PerfuSense mark from the poster: stacked layers (sensor grid, sheet, alarm) in a rounded tile. */
+export function Logo({ size = 34 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden>
+      <rect x="1.5" y="1.5" width="37" height="37" rx="8" fill="#f1fcf9" stroke="#121c1b" strokeWidth="3" />
+      <path d="M20 25 L32 30 L20 35 L8 30 Z" fill="#8b2635" stroke="#121c1b" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M20 17 L32 22 L20 27 L8 22 Z" fill="#ffffff" stroke="#121c1b" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M20 6 L32 11 L20 16 L8 11 Z" fill="#1d635d" stroke="#121c1b" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M14 8.5 L26 13.5 M20 6 L20 16 M26 8.5 L14 13.5" stroke="#adefe7" strokeWidth="1" />
+    </svg>
+  );
+}
+
+/** A button-like header that expands its content below with a smooth height animation. */
+export function Disclosure({
+  open,
+  onToggle,
+  summary,
+  children,
+  className = '',
+}: {
+  open: boolean;
+  onToggle: () => void;
+  summary: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="w-full text-left flex items-center gap-2">
+        <span className="flex-1 min-w-0">{summary}</span>
+        <span className="chevron font-label-mono-sm" aria-hidden>
+          ▾
+        </span>
+      </button>
+      <div className="collapse" data-open={open}>
+        <div>{children}</div>
       </div>
-      {children && <div className="flex items-center gap-2 flex-wrap">{children}</div>}
-    </Card>
+    </div>
   );
 }
 
