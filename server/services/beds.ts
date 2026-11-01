@@ -5,6 +5,7 @@ import { getSettings } from '../lib/settings';
 import { auditItem, bedView, isFresh, type BedView } from './derive';
 import { categoryForTimer, ZONE_TIMER_NAMES, postureGroup } from '../lib/zones';
 import { hub } from './hub';
+import { queueDeviceCommand } from './ingest';
 
 export async function findBedOr404(id: string) {
   const bed = await Bed.findOne({ id });
@@ -101,6 +102,7 @@ export async function applyTurn(id: string, input: TurnInput) {
     status: 'RESOLVED',
   });
 
+  await queueDeviceCommand(id, 'ack'); // the mat clears its own alarm and timers too
   await publish(id);
   return { bed: await getBedView(id), resolvedAlerts: resolved.modifiedCount, log: auditItem(log.toObject(), now) };
 }
@@ -170,6 +172,7 @@ export async function resetZone(id: string, zoneName: string, rn?: string) {
     resolved = r.modifiedCount;
   }
   await BedEvent.create({ bedId: id, at: new Date(), kind: 'zone-reset', note: zone, rn: rn || bed.assignedRn });
+  await queueDeviceCommand(id, 'ack'); // the mat has no body-zone names, so it clears all its zones
   await publish(id);
   return {
     zone,
@@ -192,6 +195,7 @@ export async function resetAllZones(id: string, rn?: string) {
     { $set: { status: 'RESOLVED', actionTaken: 'All zones offloaded, timers reset', attendingRn: rn || bed.assignedRn } },
   );
   await BedEvent.create({ bedId: id, at: new Date(), kind: 'zone-reset', note: 'ALL', rn: rn || bed.assignedRn });
+  await queueDeviceCommand(id, 'ack');
   await publish(id);
   return { ok: true, resolvedAlerts: r.modifiedCount };
 }

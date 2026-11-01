@@ -8,3 +8,7 @@ coverage/
 !.env.example
 .freebuff/
 .aistudio/
+
+# firmware host-test binary (built by firmware/run_checks.sh)
+firmware/test/test_processing
+firmware/test/test_processing.exe

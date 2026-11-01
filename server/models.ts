@@ -71,6 +71,8 @@ const matSchema = new Schema(
     zoneTimers: [timerSchema],
     lastFrameAt: { type: Date, default: null },
     frames: { type: Number, default: 0 },
+    // Commands waiting for the device ("ack", "tare"). Delivered in the reply to its next frame.
+    pendingCommands: { type: [String], default: [] },
   },
   opts,
 );

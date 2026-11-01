@@ -76,6 +76,8 @@ void postFrame(const uint8_t* frame64) {          // the same 64 bytes the firmw
 }
 ```
 
+The reply to every frame is JSON that can carry **commands for the mat**, for example `{"bedId":"bed-07","peakMmHg":44,"peakZone":"LUMBAR","alerts":0,"commands":["ack"]}`. `ack` is queued when a turn is confirmed or a zone is reset in the web app (the mat clears its local alarm and timers), and `tare` when the tare button is used (the mat relearns its empty-mat baseline). Each command is delivered once. The full firmware is in `firmware/`.
+
 The firmware already subtracts its own empty-mat baseline. The server's "tare" does the same job again, so use one of them (device baseline, or server tare with raw device data).
 
 ## Tests

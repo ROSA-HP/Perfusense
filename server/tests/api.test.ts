@@ -384,3 +384,26 @@ test('cells: status bands follow the sensor-map legend (30 / 50 mmHg)', async ()
   assert.equal(cells[2].status, 'critical');
   assert.equal(cells[2].load, 56);
 });
+
+test('device commands: ack and tare are queued and delivered exactly once', async () => {
+  const send = () =>
+    api('/telemetry/bed-105/frame', { method: 'POST', headers: KEY, json: { cells: Array(64).fill(0) } });
+  await send(); // drain anything left over from earlier tests
+  let r = await send();
+  assert.deepEqual(r.data.commands, []);
+
+  await api('/beds/bed-105/turns', { method: 'POST', json: { posture: 'SUPINE 15°' } });
+  r = await send();
+  assert.deepEqual(r.data.commands, ['ack']);
+  r = await send();
+  assert.deepEqual(r.data.commands, [], 'delivered once, then cleared');
+
+  assert.equal((await api('/mats/bed-105/tare', { method: 'POST' })).status, 200);
+  r = await send();
+  assert.deepEqual(r.data.commands, ['tare']);
+
+  await api('/beds/bed-105/zones/reset-all', { method: 'POST', json: {} });
+  await api('/beds/bed-105/zones/reset-all', { method: 'POST', json: {} }); // duplicates collapse
+  r = await send();
+  assert.deepEqual(r.data.commands, ['ack']);
+});

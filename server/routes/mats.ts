@@ -5,7 +5,7 @@ import { getSettings } from '../lib/settings';
 import { chunk8 } from '../lib/zones';
 import { emptyMatrix, isFresh } from '../services/derive';
 import { findBedOr404 } from '../services/beds';
-import { ensureMatState } from '../services/ingest';
+import { ensureMatState, queueDeviceCommand } from '../services/ingest';
 
 export const matsRouter = Router();
 
@@ -66,6 +66,7 @@ matsRouter.post(
     }
     // rawLast holds raw bytes; the baseline is the raw reading at tare time.
     await MatState.updateOne({ bedId: mat.bedId }, { $set: { baselineRaw: mat.rawLast } });
+    await queueDeviceCommand(mat.bedId, 'tare'); // the mat relearns its own baseline too
     await log(mat.bedId, 'Tare applied: zero plane stored from the latest frame');
     res.json({ ok: true, message: 'Baseline stored. Make sure the mat was empty.' });
   }),

@@ -120,7 +120,9 @@ export async function ingestFrame(bedId: string, raw: number[], at: Date = new D
   for (const p of pending.values()) await raiseAlert(bed, p, at);
 
   // 5. Save and announce.
-  await MatState.updateOne(
+  // The same write hands over any queued device commands and clears them (new: false returns
+  // the document as it was before this update), so a command is delivered exactly once.
+  const before = await MatState.findOneAndUpdate(
     { bedId },
     {
       $set: {
@@ -131,10 +133,13 @@ export async function ingestFrame(bedId: string, raw: number[], at: Date = new D
         peakZone,
         zoneTimers: timers,
         lastFrameAt: at,
+        pendingCommands: [],
       },
       $inc: { frames: 1 },
     },
+    { new: false },
   );
+  const commands: string[] = [...((before?.pendingCommands as string[] | undefined) ?? [])];
   hub.broadcast('frame', {
     bedId,
     at: at.toISOString(),
@@ -143,7 +148,14 @@ export async function ingestFrame(bedId: string, raw: number[], at: Date = new D
     peakZone,
     zoneTimers: timers.map((x) => zoneTimerView(x, settings)),
   });
-  return { bedId, peakMmHg: Math.round(peak * 10) / 10, peakZone, alerts: pending.size };
+  return { bedId, peakMmHg: Math.round(peak * 10) / 10, peakZone, alerts: pending.size, commands };
+}
+
+export type DeviceCommand = 'ack' | 'tare';
+
+/** Queue a command for the mat. It is sent in the reply to the mat's next frame. */
+export async function queueDeviceCommand(bedId: string, command: DeviceCommand) {
+  await MatState.updateOne({ bedId }, { $addToSet: { pendingCommands: command } });
 }
 
 async function raiseAlert(bed: any, p: Pending, at: Date) {
