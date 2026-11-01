@@ -11,14 +11,14 @@
 #include "Scanner.h"
 
 void scannerBegin() {
-  for (uint8_t i = 0; i < 3; i++) pinMode(MUX_S[i], OUTPUT);
+  for (uint8_t i = 0; i < MUX_SELECT_LINES; i++) pinMode(MUX_S[i], OUTPUT);
   for (uint8_t r = 0; r < MAT_N; r++) pinMode(ROW_PINS[r], INPUT);  // floating until scanned
   analogReadResolution(12);                  // 0..4095
   analogSetPinAttenuation(ADC_PIN, ADC_11db);  // measure up to about 3.1 V
 }
 
 static inline void selectColumn(uint8_t c) {
-  for (uint8_t i = 0; i < 3; i++) digitalWrite(MUX_S[i], (c >> i) & 1);
+  for (uint8_t i = 0; i < MUX_SELECT_LINES; i++) digitalWrite(MUX_S[i], (c >> i) & 1);
 }
 
 void scannerReadFrame(uint16_t* mv) {

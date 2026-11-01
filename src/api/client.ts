@@ -1,4 +1,4 @@
-import type { AuditLogItem, PatientBed, PiezoCell, ZoneTimer } from '../types';
+import type { AuditLogItem, PatientBed, PiezoCell, Settings, ZoneTimer } from '../types';
 
 // Empty base = same origin. In development Vite proxies /api to the Express server (vite.config.ts).
 const BASE: string = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
@@ -20,7 +20,7 @@ async function request<T>(path: string, init: { method?: string; body?: unknown 
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   if (res.status === 204) return undefined as T;
-  const data = await res.json().catch(() => ({}));
+  const data = (await res.json().catch(() => ({}))) as { error?: string; details?: unknown };
   if (!res.ok) throw new ApiRequestError(res.status, data?.error ?? res.statusText, data?.details);
   return data as T;
 }
@@ -54,11 +54,29 @@ export type PostureTimeline = {
   segments: PostureSegment[];
   totalsMin: Record<'BACK' | 'LEFT' | 'RIGHT' | 'OTHER', number>;
 };
-export type Settings = {
-  thresholds: { criticalMmHg: number; maxDwellMin: number; warnMmHg: number; autoPage: boolean };
-  protocol: { cadenceMin: number; skinEnforce: boolean; preAlertMin: number };
-  zoneLimitsMin: Record<string, number>;
-  telemetry: Record<string, number | number[]>;
+export type { Settings };
+export type PressureHistory = {
+  from: string;
+  to: string;
+  samples: { at: string; peakMmHg: number; peakZone: string; meanLoadedMmHg: number; loadedCells: number }[];
+  turns: { at: string; posture: string; rn: string; note: string }[];
+  summary: {
+    samples: number;
+    latestPeakMmHg: number | null;
+    maxPeakMmHg: number | null;
+    maxPeakAt: string | null;
+    maxPeakZone: string | null;
+    meanPeakMmHg: number | null;
+    turns: number;
+  };
+};
+export type MatrixResponse = {
+  unit: 'mmHg';
+  matrix: number[][];
+  peakMmHg: number;
+  peakZone: string;
+  lastFrameAt: string | null;
+  fresh: boolean;
 };
 
 // ---- calls -------------------------------------------------------------------------------
@@ -70,9 +88,9 @@ export const api = {
     },
     get: (id: string) => request<BedView & { zoneTimers: ZoneTimer[] }>(`/beds/${id}`),
     zoneTimers: (id: string) => request<ZoneTimer[]>(`/beds/${id}/zone-timers`),
-    matrix: (id: string) =>
-      request<{ matrix: number[][]; peakMmHg: number; peakZone: string; lastFrameAt: string | null; fresh: boolean }>(`/beds/${id}/matrix`),
+    matrix: (id: string) => request<MatrixResponse>(`/beds/${id}/matrix`),
     postureTimeline: (id: string, hours = 8) => request<PostureTimeline>(`/beds/${id}/posture-timeline?hours=${hours}`),
+    pressureHistory: (id: string, hours = 8) => request<PressureHistory>(`/beds/${id}/pressure-history?hours=${hours}`),
     logTurn: (id: string, body: { posture: string; note?: string; rn?: string; skinChecks?: boolean[] }) =>
       request<{ bed: BedView; resolvedAlerts: number; log: AuditLogRow }>(`/beds/${id}/turns`, { method: 'POST', body }),
     snooze: (id: string, minutes = 5) => request<BedView>(`/beds/${id}/snooze`, { method: 'POST', body: { minutes } }),
@@ -99,21 +117,29 @@ export const api = {
   },
   mats: {
     cells: (bedId: string) => request<PiezoCell[]>(`/mats/${bedId}/cells`),
-    tare: (bedId: string) => request<{ ok: boolean; message: string }>(`/mats/${bedId}/tare`, { method: 'POST' }),
+    tare: (bedId: string) =>
+      request<{ ok: boolean; mode: 'device' | 'server'; message: string }>(`/mats/${bedId}/tare`, { method: 'POST' }),
     zeroCell: (bedId: string, cellId: string) => request<{ ok: boolean }>(`/mats/${bedId}/cells/${cellId}/zero`, { method: 'POST' }),
     selfTest: (bedId: string) =>
       request<{ pass: boolean; checks: { name: string; pass: boolean; detail: string }[] }>(`/mats/${bedId}/self-test`, { method: 'POST' }),
   },
   settings: {
     get: () => request<Settings>('/settings'),
-    update: (patch: Partial<{ thresholds: Partial<Settings['thresholds']>; protocol: Partial<Settings['protocol']>; zoneLimitsMin: Record<string, number> }>) =>
+    update: (
+      patch: Partial<{
+        thresholds: Partial<Settings['thresholds']>;
+        protocol: Partial<Settings['protocol']>;
+        zoneLimitsMin: Record<string, number>;
+        telemetry: Partial<Settings['telemetry']>;
+      }>,
+    ) =>
       request<Settings>('/settings', { method: 'PUT', body: patch }),
   },
   health: async (): Promise<{ ok: boolean; db: string; streams: number } | null> => {
     try {
       const res = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(3500) });
       if (!res.ok) return null;
-      return await res.json();
+      return (await res.json()) as { ok: boolean; db: string; streams: number };
     } catch {
       return null;
     }

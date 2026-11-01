@@ -149,9 +149,9 @@ One row is driven to 3.3 V; the other rows float (set as inputs). The mux connec
 
 ### 5.4 Wiring
 
-**Current state:** the delivered firmware and wiring are for the earlier **8×8** design (8 rows on GPIO 13, 16, 17, 18, 19, 21, 22, 23; mux S0–S2 on GPIO 25, 26, 27 with S3 tied to GND). A 10×10 mat needs 10 row pins and all four mux select lines.
+**Current state:** the firmware in `firmware/` now uses this 10×10 pin map. It has not been flashed to a board yet.
 
-**Proposed 10×10 pin map (not built or tested yet):**
+**10×10 pin map (in `firmware/perfusense_mat/config.h`, not tested on hardware yet):**
 
 | Function | GPIO |
 |---|---|
@@ -164,6 +164,8 @@ One row is driven to 3.3 V; the other rows float (set as inputs). The mux connec
 | LED | 2 (the on-board LED on most DevKitC boards) |
 | Button | 35 (input-only, needs an external 10 kΩ pull-up to 3.3 V) |
 
+**Check the SIG capacitor:** 10 kΩ with 0.1 µF is an RC time of 1 ms, but the scan waits only 80 µs after switching columns, so part of the previous cell's voltage is still there (crosstalk along each row). Use about 10 nF, or raise `SETTLE_US`, and re-measure crosstalk.
+
 Why these pins: GPIO 34 is on ADC1, which keeps working while Wi-Fi is on (ADC2 does not). Strapping pins 0, 5, 12, 15 and flash pins 6–11 are avoided. GPIO 2 is a strapping pin but is safe for a small LED output; GPIO 14 pulses briefly at boot, which is harmless for a row driver.
 
 Common mistakes: EN not tied to GND (mux disabled); unused select line floating; no 10 kΩ pull-down (random readings); grounds not shared; loose breadboard wires.
@@ -174,7 +176,7 @@ Common mistakes: EN not tied to GND (mux disabled); unused select line floating;
 
 ### 6.1 Where it is
 
-The firmware is in the repository at `firmware/perfusense_mat/` (Arduino sketch folder), with host tests in `firmware/test/` (`bash firmware/run_checks.sh`, needs g++). It is still written for **8×8**. Section 13 lists the changes needed for 10×10.
+The firmware is in the repository at `firmware/perfusense_mat/` (Arduino sketch folder), with host tests in `firmware/test/` (`bash firmware/run_checks.sh`, needs g++). It is written for the **10×10** mat with 25 local zones (2×2 cells each). Section 13 lists the changes needed for 10×10.
 
 Arduino IDE, board "ESP32 Dev Module", no extra libraries. All settings live in `config.h`.
 
@@ -274,14 +276,15 @@ Location: `server/` in the repo. TypeScript run with `tsx`. Express 4, Mongoose 
 
 ### 7.3 What happens to one frame (`ingestFrame`)
 
-1. Validate: 100 values (or 64), each 0–255; the bed must exist.
+1. Validate: each value 0–255; the bed must exist; the frame has exactly one value per mat cell (100), otherwise 422.
 2. Subtract the server-side tare baseline (zero unless "tare" was used).
-3. Convert: `mmHg = byte × mmHgPerByte` (0.4, placeholder). Heatmap level 0–3 from `levelMmHg` [10, 25, 40].
-4. Cell status for the sensor map: warn ≥ 30 mmHg, critical ≥ 50 mmHg.
+3. Convert: `mmHg = byte × mmHgPerByte` (0.4, placeholder). Heatmap level 0–3 from `levelMmHg` [15, 32, 55] (the one pressure scale, also used by the UI legend).
+4. Cell status for the sensor map: warn ≥ 32 mmHg, critical ≥ 55 mmHg (same as the heatmap bands).
 5. Peak cell and its zone name.
 6. Six body-zone timers: `SACRUM & COCCYX`, `HEELS (CALCANEUS)`, `LEFT TROCHANTER (HIP)`, `SHOULDERS (SCAPULAE)`, `RIGHT TROCHANTER (HIP)`, `ELBOWS & OCCIPUT`. A timer grows while its highest cell is ≥ 20 mmHg (`loadedMmHg`) and shrinks 2× faster otherwise. A gap over 60 s counts as only 1 minute.
 7. Alerts: a timer past its limit, or any cell ≥ 65 mmHg. One open alert per bed and body area; later frames update it instead of duplicating it.
-8. Save to MatState, broadcast a `frame` event, reply `202` with `{bedId, peakMmHg, peakZone, alerts}`.
+8. At most once a minute, store a `PressureSample` (peak, mean loaded pressure; kept 7 days) for the History page.
+9. Save to MatState, broadcast a `frame` event, reply `202` with `{bedId, peakMmHg, peakZone, alerts, commands}`.
 
 ### 7.4 Bed status (computed on every request, never stored)
 
@@ -326,7 +329,7 @@ Mat data older than `staleSec` (30 s) is treated as offline and stored fallback 
 | thresholds | criticalMmHg 65, warnMmHg 45, maxDwellMin 60, autoPage true |
 | protocol | cadenceMin 120, preAlertMin 15, skinEnforce true |
 | zoneLimitsMin | sacrum 120, heels 90, hips 120, shoulders 120, elbows & occiput 120 |
-| telemetry | mmHgPerByte 0.4, levelMmHg [10, 25, 40], loadedMmHg 20, recoveryFactor 2, nearLimitRatio 0.85, elevatedRatio 0.6, elevatedMmHg 30, staleSec 30, cellWarnMmHg 30, cellCriticalMmHg 50 |
+| telemetry | mmHgPerByte 0.4, levelMmHg [15, 32, 55], loadedMmHg 20, recoveryFactor 2, nearLimitRatio 0.85, elevatedRatio 0.6, elevatedMmHg 30, staleSec 30, cellWarnMmHg 32, cellCriticalMmHg 55 |
 
 ### 7.7 Safety in the code
 
@@ -363,16 +366,7 @@ Stack: React 19, TypeScript, Vite 8, Tailwind CSS 4, Lucide icons, Motion.
 
 ### 8.3 Connecting the UI to the backend (important)
 
-The Vite dev server only forwards `/api` when the `API_URL` environment variable is set. Without it, Vite answers `/api` itself in "standalone" mode, so **`npm run dev:all` alone shows mock data**. Use one of:
-
-```bash
-# bash
-API_URL=http://localhost:4000 npm run dev
-# Windows PowerShell
-$env:API_URL="http://localhost:4000"; npm run dev
-```
-
-or put `VITE_API_URL=http://localhost:4000` in `.env` so the client calls the API directly (the server's `CORS_ORIGIN` already allows `http://localhost:3000`).
+The Vite dev server always forwards `/api` to `API_URL` (default `http://localhost:4000`), so `npm run dev:all` shows live data. When the API is not running, the app shows SAMPLE DATA under an orange banner and reconnects by itself. To call the API directly instead, put `VITE_API_URL=http://localhost:4000` in `.env` so the client calls the API directly (the server's `CORS_ORIGIN` already allows `http://localhost:3000`).
 
 ### 8.4 Heatmap colour scale (UI legend)
 
@@ -474,7 +468,7 @@ Record the method for each (load used, number of trials, duration, temperature, 
 | Stage | Tests | Status |
 |---|---|---|
 | 1 Bench | Crosstalk, repeatability, drift over 4–8 h, calibration with known weights (0, 100, 200, 500, 1000 g), location error < 1 cell, 1–2 fps | Results reported for the first three |
-| 2 Software | Backend integration tests, firmware logic tests, device → server → command round trip | Done on simulated data; backend tests need the 100-cell fix (section 13) |
+| 2 Software | Backend integration tests, firmware logic tests, device → server → command round trip | Done on simulated data; backend tests updated to 100-cell frames |
 | 3 AI | Accuracy on held-out people: baseline vs Transformer vs distilled | Code ready, not run |
 | 4 Phantom | Soft silicone or gel model; compare with a reference mat if available; fluid-resistant cover | Planned |
 | 5 Volunteers | Healthy adults, short sessions, written consent, anonymous IDs | Planned, needs ethics approval. Never on patients in this project |
@@ -487,10 +481,10 @@ Success means every target is measured and reported, whether met or not.
 
 | Area | State |
 |---|---|
-| Web UI (React) | Built; 100-cell views; offline fallback; connects to the API when `API_URL` is set |
-| Backend (Express + MongoDB) | Built; 100-cell support; type-checks; **16 of 22 tests pass** at `9c98459` (see section 13) |
+| Web UI (React) | Reworked: Monitor, Beds, Zones (body map + alerts), History (real pressure history), Mat (self-test); SAMPLE DATA labelled when offline |
+| Backend (Express + MongoDB) | Built; 100-cell support; type-checks; tests updated to 100-cell frames (need MongoDB to run) |
 | Device commands (`ack`, `tare` in the frame reply) | Merged in `56ae7b4`; its integration test needs MongoDB to run |
-| ESP32 firmware | In the repo (`firmware/`); tested on a computer for 8×8; **not updated for 10×10; not run on a board** |
+| ESP32 firmware | In the repo (`firmware/`); **updated for 10×10** (25 zones, 4 mux lines, fixes); host tests updated but not re-run (no g++); **not run on a board** |
 | Physical mat | 10×10, 30 × 30 cm per the deck; bench results reported |
 | AI model | Designed and coded; not trained; not connected |
 | Security (login, HTTPS) | Not started |
@@ -503,14 +497,14 @@ Success means every target is measured and reported, whether met or not.
 
 ### Code
 
-1. **64-cell frames crash ingest (HTTP 500).** The mat state has 100 cells; a 64-byte frame leaves cells 65–100 with `NaN` loads and the save fails. This breaks 6 backend tests (which still send 64-cell frames) and would break the current 8×8 firmware. Fix: reject frames whose length differs from the mat's cell count with a clear 422, and update the tests to 100-cell frames.
-2. **Firmware is 8×8.** For 10×10: `MAT_N = 10`, 10 row pins, mux select uses S0–S3, and decide the local zone grid (see 5 below).
+1. ~~64-cell frames crash ingest (HTTP 500).~~ Fixed: a frame whose length differs from the mat's cell count is refused with a clear 422, and the tests send 100-cell frames. The current 8×8 firmware is therefore refused until item 2 is done.
+2. ~~Firmware is 8×8.~~ Updated to 10×10 (pin map in section 5.4). Also fixed: 16-bit alert mask that could not hold 25 zones, tare time counted as load time, button acting on level instead of press, a command flag race, Wi-Fi retry fighting auto-reconnect. Still to do: compile, flash and bench-test it.
 3. ~~Device-command patch not merged.~~ Merged in `56ae7b4`: a nurse's "Done, turned" now clears the mat's own alarm through the `ack` command.
-4. **Threshold scales disagree.** UI legend: 15 / 32 / 55 mmHg. Server: heatmap levels 10 / 25 / 40, cell bands 30 / 50, critical alert 65. Pick one set and use it everywhere (all still placeholders until calibrated).
-5. **Zone count.** The deck says 16 zones on the 10×10 mat, but 10 does not split into 4 equal parts. Options: 25 zones of 2×2 (works with the current firmware logic) or an uneven 4×4 split (3-2-2-3 cells).
-6. **Mock AI output shown as real.** The Live view shows "CONFIDENCE: 94.2%" for the posture, but no model is trained. Label it SAMPLE DATA or hide it.
-7. **`npm run dev:all` shows mock data** unless `API_URL` is set (section 8.3).
-8. **Leftovers:** `@google/genai` dependency and `GEMINI_API_KEY` are unused. `README.md` still says 64-channel and lists old colours.
+4. ~~Threshold scales disagree.~~ One scale, 15 / 32 / 55 mmHg, in `telemetry.levelMmHg`; the UI reads it from the API. Critical alert stays 65. All placeholders.
+5. **Zone count.** Decided: the firmware uses 25 zones of 2×2 cells. Update the deck, which still says 16.
+6. ~~Mock AI output shown as real.~~ Removed; the Monitor shows "AI: NOT TRAINED YET" and the nurse-logged position.
+7. ~~`npm run dev:all` shows mock data.~~ Fixed (section 8.3).
+8. ~~Leftovers.~~ Gemini dependency and settings removed; README rewritten. Also fixed: tare subtracted the baseline twice for ESP32 mats.
 9. `npm install` needs `--legacy-peer-deps` if peer-dependency conflicts appear.
 
 ### Presentation materials

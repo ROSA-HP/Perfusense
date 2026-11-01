@@ -1,189 +1,213 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PatientBed } from '../types';
+import { levelToMmHg, pressureStyle } from '../utils/heatmapColors';
+import { Chip, EmptyState, PageHeader, SampleBadge } from '../components/ui';
 
 interface BedRosterViewProps {
-  beds: PatientBed[];
+  beds: (PatientBed & { nextTurnDueAt?: string | null; matFresh?: boolean })[];
+  monitoredId: string;
+  connected: boolean;
+  cadenceMin: number;
+  onMonitor: (bedId: string) => void;
   onLogTurnForBed: (bed: PatientBed) => void;
   onInspectBed: (bed: PatientBed) => void;
-  showToast: (title: string, desc?: string) => void;
 }
 
-export const BedRosterView: React.FC<BedRosterViewProps> = ({
-  beds,
-  onLogTurnForBed,
-  onInspectBed,
-}) => {
-  const [filter, setFilter] = useState<'all' | 'due' | 'high_risk'>('all');
+type Filter = 'all' | 'turn' | 'risk' | 'off';
 
-  const filteredBeds = beds.filter((bed) => {
-    if (filter === 'due') return bed.status === 'due_now' || bed.status === 'overdue';
-    if (filter === 'high_risk') return bed.bradenScore <= 12;
-    return true;
-  });
+// Lower = more urgent. Used for the default sort and the summary strip.
+const URGENCY: Record<PatientBed['status'], number> = { overdue: 0, due_now: 1, pre_alert: 2, elevated: 3, optimal: 4, stable: 5, ambulating: 6 };
+const STATUS_TONE: Record<PatientBed['status'], { bar: string; chip: 'carmine' | 'terracotta' | 'mint' | 'parchment' }> = {
+  overdue: { bar: 'bg-[#8b2635]', chip: 'carmine' },
+  due_now: { bar: 'bg-[#8b2635]', chip: 'carmine' },
+  pre_alert: { bar: 'bg-[#d97757]', chip: 'terracotta' },
+  elevated: { bar: 'bg-[#d97757]', chip: 'terracotta' },
+  optimal: { bar: 'bg-[#1d635d]', chip: 'mint' },
+  stable: { bar: 'bg-[#1d635d]', chip: 'mint' },
+  ambulating: { bar: 'bg-[#a3cfc9]', chip: 'parchment' },
+};
+const SUMMARY: { label: string; statuses: PatientBed['status'][]; tone: string }[] = [
+  { label: 'Overdue / due', statuses: ['overdue', 'due_now'], tone: 'bg-[#8b2635] text-white' },
+  { label: 'Due soon / high load', statuses: ['pre_alert', 'elevated'], tone: 'bg-[#d97757] text-white' },
+  { label: 'On schedule', statuses: ['optimal', 'stable'], tone: 'bg-[#adefe7] text-[#00201d]' },
+  { label: 'Out of bed', statuses: ['ambulating'], tone: 'bg-[#ede8dc] text-[#121c1b]' },
+];
 
-  const getStatusBadge = (status: PatientBed['status']) => {
-    switch (status) {
-      case 'due_now':
-      case 'overdue':
-        return 'bg-[#8b2635] text-white font-bold animate-pulse';
-      case 'pre_alert':
-      case 'elevated':
-        return 'bg-[#d97757] text-white font-bold';
-      case 'ambulating':
-        return 'bg-[#EDE8DC] text-[#121c1b]';
-      case 'optimal':
-      case 'stable':
-      default:
-        return 'bg-[#adefe7] text-[#00201d] font-bold';
-    }
-  };
+function turnProgress(bed: BedRosterViewProps['beds'][number], cadenceMin: number, now: number): number {
+  if (bed.status === 'overdue' || bed.status === 'due_now') return 100;
+  if (!bed.nextTurnDueAt) return bed.status === 'pre_alert' ? 90 : 50;
+  const remaining = (new Date(bed.nextTurnDueAt).getTime() - now) / 60000;
+  return Math.max(0, Math.min(100, Math.round((1 - remaining / cadenceMin) * 100)));
+}
+
+function MiniMap({ levels }: { levels: number[][] }) {
+  const n = levels.length || 10;
+  return (
+    <div className="grid gap-px bg-[#121c1b] border-[2px] border-[#121c1b] w-[72px] h-[72px] shrink-0" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }} aria-hidden>
+      {levels.flat().map((lvl, i) => (
+        <span key={i} style={{ background: pressureStyle(levelToMmHg(lvl)).bg }} />
+      ))}
+    </div>
+  );
+}
+
+export const BedRosterView: React.FC<BedRosterViewProps> = ({ beds, monitoredId, connected, cadenceMin, onMonitor, onLogTurnForBed, onInspectBed }) => {
+  const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<'urgency' | 'bed'>('urgency');
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const needsTurn = (b: PatientBed) => b.status === 'overdue' || b.status === 'due_now' || b.status === 'pre_alert';
+  const highRisk = (b: PatientBed) => b.bradenScore <= 12;
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return beds
+      .filter((b) => (filter === 'turn' ? needsTurn(b) : filter === 'risk' ? highRisk(b) : filter === 'off' ? b.status === 'ambulating' : true))
+      .filter((b) => !q || [b.bedNumber, b.patientName, b.patientId, b.pod, b.assignedRn].some((v) => v?.toLowerCase().includes(q)))
+      .sort((a, b) => (sort === 'urgency' ? URGENCY[a.status] - URGENCY[b.status] || a.bradenScore - b.bradenScore : a.bedNumber.localeCompare(b.bedNumber, undefined, { numeric: true })));
+  }, [beds, filter, query, sort]);
+
+  const filters: { id: Filter; label: string; count: number }[] = [
+    { id: 'all', label: 'All', count: beds.length },
+    { id: 'turn', label: 'Needs turn', count: beds.filter(needsTurn).length },
+    { id: 'risk', label: 'Braden ≤ 12', count: beds.filter(highRisk).length },
+    { id: 'off', label: 'Out of bed', count: beds.filter((b) => b.status === 'ambulating').length },
+  ];
 
   return (
-    <div className="flex flex-col gap-3.5 sm:gap-4 select-none w-full max-w-[1400px] mx-auto">
-      {/* Clean Header & Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#EDE8DC] p-3 sm:p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 bg-[#1d635d]"></span>
-            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-sm sm:text-lg">
-              BED ROSTER
-            </h1>
+    <div className="flex flex-col gap-3.5 sm:gap-4 w-full">
+      <PageHeader title="Beds" subtitle="Most urgent first. Tap MONITOR to open a bed on the live map.">
+        {!connected && <SampleBadge />}
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search bed, patient, RN…"
+          aria-label="Search beds"
+          className="bg-white border-[2px] border-[#121c1b] px-2 py-1.5 text-xs w-full sm:w-56 outline-none focus:shadow-[2px_2px_0px_#121c1b]"
+        />
+        <select value={sort} onChange={(e) => setSort(e.target.value as 'urgency' | 'bed')} aria-label="Sort beds" className="bg-white border-[2px] border-[#121c1b] px-2 py-1.5 text-xs font-bold">
+          <option value="urgency">Sort: urgency</option>
+          <option value="bed">Sort: bed number</option>
+        </select>
+      </PageHeader>
+
+      {/* Ward summary: also acts as a legend for the card colours */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {SUMMARY.map((s) => (
+          <div key={s.label} className={`${s.tone} border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] px-3 py-2 flex items-center justify-between`}>
+            <span className="font-label-mono-sm text-[10px] uppercase font-bold">{s.label}</span>
+            <span className="text-xl font-bold">{beds.filter((b) => s.statuses.includes(b.status)).length}</span>
           </div>
-          <p className="font-body-sm text-[#3f4947] text-[11px] sm:text-xs mt-0.5">
-            ICU POD 3 // Patient turn schedules and contact pressure overview.
-          </p>
-        </div>
-
-        {/* Filter Buttons - Grid 3 cols on mobile, flex row on sm+ */}
-        <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-2 sm:px-3 py-1.5 font-label-mono-sm text-[10px] sm:text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] text-center neo-btn ${
-              filter === 'all'
-                ? 'bg-[#1d635d] text-white shadow-[2px_2px_0px_#121c1b]'
-                : 'bg-[#ffffff] text-[#121c1b] hover:bg-[#ebf6f4]'
-            }`}
-          >
-            ALL ({beds.length})
-          </button>
-          <button
-            onClick={() => setFilter('due')}
-            className={`px-2 sm:px-3 py-1.5 font-label-mono-sm text-[10px] sm:text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] text-center neo-btn ${
-              filter === 'due'
-                ? 'bg-[#8b2635] text-white shadow-[2px_2px_0px_#121c1b]'
-                : 'bg-[#ffffff] text-[#8b2635] hover:bg-[#ffdadb]'
-            }`}
-          >
-            DUE ({beds.filter((b) => b.status === 'due_now' || b.status === 'overdue').length})
-          </button>
-          <button
-            onClick={() => setFilter('high_risk')}
-            className={`px-2 sm:px-3 py-1.5 font-label-mono-sm text-[10px] sm:text-xs font-bold uppercase transition-all cursor-pointer border-[2px] border-[#121c1b] text-center neo-btn ${
-              filter === 'high_risk'
-                ? 'bg-[#1d635d] text-white shadow-[2px_2px_0px_#121c1b]'
-                : 'bg-[#ffffff] text-[#121c1b] hover:bg-[#ebf6f4]'
-            }`}
-          >
-            HIGH RISK ({beds.filter((b) => b.bradenScore <= 12).length})
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* Simplified 8-Bed Clinical Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {filteredBeds.map((bed) => {
-          const isUrgent = bed.status === 'due_now' || bed.status === 'overdue';
-          const isElevated = bed.status === 'elevated' || bed.status === 'pre_alert';
-
-          return (
-            <div
-              key={bed.id}
-              className={`bg-[#ffffff] border-[3px] ${
-                isUrgent ? 'border-[#8b2635]' : 'border-[#121c1b]'
-              } shadow-[3px_3px_0px_#121c1b] flex flex-col justify-between p-3 sm:p-3.5 transition-all hover:-translate-x-0.5 hover:-translate-y-0.5`}
-            >
-              <div>
-                {/* Bed Header */}
-                <div className="flex items-center justify-between pb-2 border-b border-[#121c1b]/20">
-                  <span className="font-headline-sm font-bold text-sm uppercase text-[#121c1b]">
-                    {bed.bedNumber}
-                  </span>
-                  <span className={`px-2 py-0.5 font-label-mono-sm text-[10px] uppercase border border-[#121c1b] ${getStatusBadge(bed.status)}`}>
-                    {bed.statusLabel}
-                  </span>
-                </div>
-
-                {/* Patient Information */}
-                <div className="mt-2.5">
-                  <h2 className="font-headline-md text-sm text-[#121c1b] font-bold uppercase truncate">
-                    {bed.patientName}
-                  </h2>
-                  <div className="flex items-center justify-between text-[11px] font-label-mono-sm text-[#3f4947] mt-1">
-                    <span>Braden: <strong className={bed.bradenScore <= 12 ? 'text-[#8b2635]' : 'text-[#121c1b]'}>{bed.bradenScore} ({bed.bradenRisk})</strong></span>
-                    <span>RN: {bed.assignedRn.split(' ')[1] || 'Assigned'}</span>
-                  </div>
-                </div>
-
-                {/* Posture & Pressure Stats */}
-                <div className="bg-[#ebf6f4] p-2 sm:p-2.5 border border-[#121c1b] my-2.5 sm:my-3 space-y-1 text-xs font-label-mono-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[#3f4947] text-[11px]">POSTURE:</span>
-                    <span className="font-bold text-[#121c1b] truncate max-w-[130px] text-right">{bed.posture}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[#3f4947] text-[11px]">PEAK LOAD:</span>
-                    <span className={`font-bold ${isUrgent ? 'text-[#8b2635]' : isElevated ? 'text-[#d97757]' : 'text-[#1d635d]'}`}>
-                      {bed.peakPressure} mmHg
-                    </span>
-                  </div>
-                </div>
-
-                {/* Countdown to Next Turn */}
-                <div className="mb-2.5 sm:mb-3">
-                  <div className="flex justify-between items-baseline text-[11px] font-label-mono-sm mb-1">
-                    <span className="text-[#3f4947] font-bold">NEXT TURN:</span>
-                    <span className={`font-bold ${isUrgent ? 'text-[#8b2635]' : 'text-[#121c1b]'}`}>
-                      {bed.countdown}
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-[#dfeae8] border border-[#121c1b] overflow-hidden">
-                    <div
-                      className={`h-full ${
-                        isUrgent
-                          ? 'bg-[#8b2635] w-full'
-                          : isElevated
-                          ? 'bg-[#d97757] w-3/4'
-                          : 'bg-[#1d635d] w-1/2'
-                      }`}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons with Comfortable Touch Height */}
-              <div className="flex items-center gap-2 pt-2 border-t border-[#121c1b]/20">
-                <button
-                  onClick={() => onLogTurnForBed(bed)}
-                  className={`flex-1 min-h-[38px] py-2 px-2 border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] font-headline-sm text-xs uppercase font-bold text-center transition-all neo-btn cursor-pointer ${
-                    isUrgent
-                      ? 'bg-[#8b2635] text-white hover:bg-[#6c1c28]'
-                      : 'bg-[#1d635d] text-white hover:bg-[#121c1b]'
-                  }`}
-                >
-                  LOG TURN
-                </button>
-                <button
-                  onClick={() => onInspectBed(bed)}
-                  className="min-h-[38px] px-3 py-2 bg-[#ffffff] hover:bg-[#ebf6f4] border-[2px] border-[#121c1b] shadow-[1px_1px_0px_#121c1b] text-xs font-bold text-[#121c1b] neo-btn cursor-pointer"
-                  title="View patient details"
-                >
-                  DETAILS
-                </button>
-              </div>
-            </div>
-          );
-        })}
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter beds">
+        {filters.map((f) => (
+          <button
+            key={f.id}
+            role="tab"
+            aria-selected={filter === f.id}
+            onClick={() => setFilter(f.id)}
+            className={`px-3 py-1.5 border-[2px] border-[#121c1b] font-label-mono-sm text-[11px] font-bold uppercase neo-btn ${
+              filter === f.id ? 'bg-[#121c1b] text-white shadow-[2px_2px_0px_#1d635d]' : 'bg-white hover:bg-[#ebf6f4]'
+            }`}
+          >
+            {f.label} · {f.count}
+          </button>
+        ))}
       </div>
+
+      {shown.length === 0 ? (
+        <EmptyState title="No beds match">Change the filter or the search.</EmptyState>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4">
+          {shown.map((bed) => {
+            const tone = STATUS_TONE[bed.status];
+            const urgent = bed.status === 'overdue' || bed.status === 'due_now';
+            const monitored = bed.id === monitoredId;
+            const progress = turnProgress(bed, cadenceMin, now);
+            const peak = pressureStyle(bed.peakPressure);
+            return (
+              <article
+                key={bed.id}
+                className={`bg-white border-[3px] ${urgent ? 'border-[#8b2635]' : 'border-[#121c1b]'} shadow-[3px_3px_0px_#121c1b] flex flex-col ${monitored ? 'ring-[3px] ring-[#1d635d] ring-offset-2 ring-offset-[#f1fcf9]' : ''}`}
+              >
+                <div className={`${tone.bar} h-2 border-b-[2px] border-[#121c1b]`} />
+                <div className="p-3 flex flex-col gap-2.5 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-base uppercase">{bed.bedNumber}</span>
+                        {monitored && <Chip tone="teal">Monitoring</Chip>}
+                      </div>
+                      <div className="font-bold text-sm truncate">{bed.patientName}</div>
+                      <div className="font-label-mono-sm text-[10px] text-[#3f4947] truncate">
+                        {bed.pod} · {bed.assignedRn || 'no RN'}
+                      </div>
+                    </div>
+                    <Chip tone={tone.chip} className={urgent ? 'animate-pulse' : ''}>
+                      {bed.statusLabel}
+                    </Chip>
+                  </div>
+
+                  <div className="flex gap-3 items-center">
+                    <MiniMap levels={bed.sensorMini} />
+                    <dl className="flex-1 grid grid-cols-2 gap-x-2 gap-y-1 font-label-mono-sm text-[10px] min-w-0">
+                      <dt className="text-[#3f4947]">Braden</dt>
+                      <dd className={`font-bold text-right ${bed.bradenScore <= 12 ? 'text-[#8b2635]' : ''}`}>
+                        {bed.bradenScore} · {bed.bradenRisk}
+                      </dd>
+                      <dt className="text-[#3f4947]">Peak</dt>
+                      <dd className="font-bold text-right">
+                        <span className="inline-block w-2 h-2 border border-[#121c1b] mr-1 align-middle" style={{ background: peak.bg }} />
+                        {bed.peakPressure} mmHg
+                      </dd>
+                      <dt className="text-[#3f4947]">Position</dt>
+                      <dd className="font-bold text-right truncate" title={bed.posture}>
+                        {bed.posture}
+                      </dd>
+                      <dt className="text-[#3f4947]">Last turn</dt>
+                      <dd className="font-bold text-right">{bed.lastTurnTime}</dd>
+                    </dl>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-baseline font-label-mono-sm text-[10px] font-bold mb-0.5">
+                      <span className="text-[#3f4947]">{bed.status === 'ambulating' ? 'OUT OF BED FOR' : 'NEXT TURN'}</span>
+                      <span className={`text-sm ${urgent ? 'text-[#8b2635]' : ''}`}>{bed.countdown}</span>
+                    </div>
+                    {bed.status !== 'ambulating' && (
+                      <div className="h-2.5 bg-[#ebf6f4] border-[2px] border-[#121c1b]" title={`${progress}% of the ${cadenceMin}-minute turn window used`}>
+                        <div className={`h-full ${tone.bar} transition-all`} style={{ width: `${progress}%` }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 border-t-[2px] border-[#121c1b]">
+                  <button onClick={() => onMonitor(bed.id)} className="py-2.5 font-label-mono-sm text-[11px] font-bold uppercase hover:bg-[#adefe7] border-r-[2px] border-[#121c1b]">
+                    Monitor
+                  </button>
+                  <button
+                    onClick={() => onLogTurnForBed(bed)}
+                    className={`py-2.5 font-label-mono-sm text-[11px] font-bold uppercase border-r-[2px] border-[#121c1b] ${urgent ? 'bg-[#8b2635] text-white hover:bg-[#6c1c28]' : 'hover:bg-[#ebf6f4]'}`}
+                  >
+                    Log turn
+                  </button>
+                  <button onClick={() => onInspectBed(bed)} className="py-2.5 font-label-mono-sm text-[11px] font-bold uppercase hover:bg-[#ebf6f4]">
+                    Details
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AuditLog, Bed, BedEvent, MatState } from '../models';
+import { AuditLog, Bed, BedEvent, MatState, PressureSample } from '../models';
 import { ApiError } from '../lib/errors';
 import { getSettings } from '../lib/settings';
 import { auditItem, bedView, isFresh, type BedView } from './derive';
@@ -198,6 +198,43 @@ export async function resetAllZones(id: string, rn?: string) {
   await queueDeviceCommand(id, 'ack');
   await publish(id);
   return { ok: true, resolvedAlerts: r.modifiedCount };
+}
+
+/**
+ * Measured pressure over the last N hours (one sample per minute from the mat) plus the turns
+ * logged in that window. Only real device/simulator data: an empty list means no frames arrived.
+ */
+export async function pressureHistory(id: string, hours: number) {
+  await findBedOr404(id);
+  const now = new Date();
+  const from = new Date(now.getTime() - hours * 3600_000);
+  const [samples, turns] = await Promise.all([
+    PressureSample.find({ bedId: id, at: { $gte: from } }).sort({ at: 1 }).limit(20_000).lean(),
+    BedEvent.find({ bedId: id, kind: 'turn', at: { $gte: from } }).sort({ at: 1 }).lean(),
+  ]);
+  const peaks = samples.map((s: any) => s.peakMmHg ?? 0);
+  const maxIdx = peaks.length ? peaks.indexOf(Math.max(...peaks)) : -1;
+  return {
+    from: from.toISOString(),
+    to: now.toISOString(),
+    samples: samples.map((s: any) => ({
+      at: new Date(s.at).toISOString(),
+      peakMmHg: s.peakMmHg ?? 0,
+      peakZone: s.peakZone ?? '',
+      meanLoadedMmHg: s.meanLoadedMmHg ?? 0,
+      loadedCells: s.loadedCells ?? 0,
+    })),
+    turns: turns.map((t: any) => ({ at: new Date(t.at).toISOString(), posture: t.posture ?? '', rn: t.rn ?? '', note: t.note ?? '' })),
+    summary: {
+      samples: samples.length,
+      latestPeakMmHg: peaks.length ? peaks[peaks.length - 1] : null,
+      maxPeakMmHg: maxIdx >= 0 ? peaks[maxIdx] : null,
+      maxPeakAt: maxIdx >= 0 ? new Date((samples[maxIdx] as any).at).toISOString() : null,
+      maxPeakZone: maxIdx >= 0 ? (samples[maxIdx] as any).peakZone ?? '' : null,
+      meanPeakMmHg: peaks.length ? Math.round((peaks.reduce((a, b) => a + b, 0) / peaks.length) * 10) / 10 : null,
+      turns: turns.length,
+    },
+  };
 }
 
 /**

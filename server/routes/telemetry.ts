@@ -14,15 +14,16 @@ function checkDeviceKey(provided: unknown) {
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new ApiError(401, 'Missing or wrong x-device-key');
 }
 
+// The exact length is checked against the bed's mat in ingestFrame (422 when it differs).
 const jsonFrame = z.object({
-  cells: z.union([z.array(z.number()).length(100), z.array(z.number()).length(64)]),
+  cells: z.array(z.number()).min(1).max(1024),
   ts: z.string().datetime().optional(), // optional device timestamp (ISO); also used to replay data
 });
 
 /**
  * POST /api/telemetry/:bedId/frame   header: x-device-key
  *   JSON:   { "cells": [100 numbers 0..255], "ts": "2026-10-15T10:00:00Z" }
- *   or raw: Content-Type: application/octet-stream with exactly 100 bytes (or 64 bytes)
+ *   or raw: Content-Type: application/octet-stream with exactly 100 bytes (one per mat cell)
  */
 telemetryRouter.post(
   '/:bedId/frame',
@@ -31,17 +32,15 @@ telemetryRouter.post(
     checkDeviceKey(req.headers['x-device-key']);
     let cells: number[];
     let at = new Date();
+    const format = Buffer.isBuffer(req.body) ? 'raw' : 'json';
     if (Buffer.isBuffer(req.body)) {
-      if (req.body.length !== 100 && req.body.length !== 64) {
-        throw new ApiError(422, 'A raw frame must be 100 bytes (or 64 bytes)');
-      }
       cells = Array.from(req.body);
     } else {
       const body = parse(jsonFrame, req.body);
       cells = body.cells;
       if (body.ts) at = new Date(body.ts);
     }
-    res.status(202).json(await ingestFrame(req.params.bedId, cells, at));
+    res.status(202).json(await ingestFrame(req.params.bedId, cells, at, format));
   }),
 );
 

@@ -9,6 +9,7 @@ import {
   applyTurn,
   deferTurn,
   postureTimeline,
+  pressureHistory,
   resetAllZones,
   resetZone,
   findBedOr404,
@@ -123,14 +124,12 @@ bedsRouter.get(
   asyncHandler(async (req, res) => {
     await findBedOr404(req.params.id);
     const [mat, settings] = await Promise.all([MatState.findOne({ bedId: req.params.id }).lean(), getSettings()]);
-    const cellLoads = mat?.cells?.map((c: any) => c.load ?? 0);
+    // Always pressure in mmHg per cell (never heatmap levels), so the UI never has to guess the unit.
+    // A mat that has never sent a frame reports zeros and lastFrameAt = null.
+    const cellLoads: number[] | undefined = mat?.lastFrameAt ? mat.cells?.map((c: any) => c.load ?? 0) : undefined;
     res.json({
-      matrix:
-        cellLoads && (cellLoads.length === 100 || cellLoads.length === 64) && cellLoads.some((v: number) => v > 0)
-          ? chunk8(cellLoads)
-          : (mat?.matrix?.length === 100 || mat?.matrix?.length === 64)
-          ? chunk8([...mat.matrix])
-          : emptyMatrix(),
+      unit: 'mmHg',
+      matrix: cellLoads && cellLoads.length > 0 ? chunk8(cellLoads) : emptyMatrix(),
       peakMmHg: mat?.peakMmHg ?? 0,
       peakZone: mat?.peakZone ?? '',
       lastFrameAt: mat?.lastFrameAt ?? null,
@@ -207,5 +206,14 @@ bedsRouter.get(
   asyncHandler(async (req, res) => {
     const hours = Math.min(72, Math.max(1, Number(req.query.hours) || 8));
     res.json(await postureTimeline(req.params.id, hours));
+  }),
+);
+
+// Measured pressure over time (one sample per minute) and the turns in the same window.
+bedsRouter.get(
+  '/:id/pressure-history',
+  asyncHandler(async (req, res) => {
+    const hours = Math.min(168, Math.max(1, Number(req.query.hours) || 8));
+    res.json(await pressureHistory(req.params.id, hours));
   }),
 );

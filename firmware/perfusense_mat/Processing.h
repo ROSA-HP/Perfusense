@@ -19,18 +19,18 @@ class Processing {
 
   // --- alarm ---
   bool     alarmActive() const;             // true while any zone is over its time limit
-  uint16_t takeNewAlerts();                 // bit mask of zones that just raised an alert (0 = none)
+  uint32_t takeNewAlerts();                 // bit mask of zones (bit z = zone z) that just raised an alert (0 = none)
   void     acknowledge();                   // patient was turned: clear every alarm and timer
 
   // --- what to send to the server ---
   void frameBytes(uint8_t* out) const;      // MAT_CELLS bytes, 0..255
 
   // --- read-only views (for display and tests) ---
-  float cellSignal(uint8_t i) const { return filt_[i]; }
+  float cellSignal(uint16_t i) const { return filt_[i]; }
   float zoneSignal(uint8_t z) const { return zone_[z]; }
   float exposure(uint8_t z) const   { return exposure_[z]; }
   bool  zoneAlerted(uint8_t z) const { return alerted_[z]; }
-  uint16_t baseline(uint8_t i) const { return base_[i]; }
+  uint16_t baseline(uint16_t i) const { return base_[i]; }
 
  private:
   uint16_t base_[MAT_CELLS];      // empty-mat level per cell
@@ -40,6 +40,6 @@ class Processing {
   float    zone_[ZONES];          // mean signal of each 2x2 zone
   float    exposure_[ZONES];      // seconds each zone has been loaded
   bool     alerted_[ZONES];
-  uint16_t newAlerts_;
+  uint32_t newAlerts_;
   float    emptyForS_;
 };

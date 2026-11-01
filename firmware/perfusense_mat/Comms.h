@@ -1,7 +1,7 @@
 // Comms.h - how the ESP32 SENDS readings to the server and RECEIVES commands back.
 //
 // The conversation (all over plain HTTP):
-//   ESP32 -> server : POST /api/telemetry/<bed>/frame   body = 64 bytes (one per cell)
+//   ESP32 -> server : POST /api/telemetry/<bed>/frame   body = 100 bytes (one per cell, row-major)
 //                     header x-device-key = the shared secret
 //   server -> ESP32 : the reply to that same POST, JSON, for example
 //                     {"bedId":"bed-07","peakMmHg":42.4,"peakZone":"SACRAL","alerts":0,"commands":["ack"]}

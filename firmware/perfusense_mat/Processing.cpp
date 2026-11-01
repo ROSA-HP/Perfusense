@@ -21,13 +21,13 @@ void Processing::baselineBegin() {
 }
 
 void Processing::baselineAdd(const uint16_t* mv) {
-  for (uint8_t i = 0; i < MAT_CELLS; i++) baseSum_[i] += mv[i];
+  for (uint16_t i = 0; i < MAT_CELLS; i++) baseSum_[i] += mv[i];
   baseCount_++;
 }
 
 void Processing::baselineEnd() {
   if (baseCount_ == 0) return;                 // nothing was added: keep the old baseline
-  for (uint8_t i = 0; i < MAT_CELLS; i++) base_[i] = (uint16_t)(baseSum_[i] / baseCount_);
+  for (uint16_t i = 0; i < MAT_CELLS; i++) base_[i] = (uint16_t)(baseSum_[i] / baseCount_);
   memset(filt_, 0, sizeof(filt_));             // start from "no load"
   emptyForS_ = 0;
 }
@@ -37,7 +37,7 @@ void Processing::update(const uint16_t* mv, float dtS) {
   // Step 2: signal = reading minus the empty-mat baseline.
   // Step 3: dead-band. Anything below DEADBAND_MV is noise, so it becomes 0.
   // Step 4: smoothing (exponential moving average) so the picture does not flicker.
-  for (uint8_t i = 0; i < MAT_CELLS; i++) {
+  for (uint16_t i = 0; i < MAT_CELLS; i++) {
     int d = (int)mv[i] - (int)base_[i];
     if (d < (int)DEADBAND_MV) d = 0;
     filt_[i] = ALPHA * d + (1.0f - ALPHA) * filt_[i];
@@ -71,7 +71,7 @@ void Processing::update(const uint16_t* mv, float dtS) {
       // Raise the alert once when the limit is reached.
       if (exposure_[z] >= EXPOSURE_LIMIT_S && !alerted_[z]) {
         alerted_[z] = true;
-        newAlerts_ |= (uint16_t)(1u << z);
+        newAlerts_ |= (uint32_t)1u << z;           // 32-bit: a 10 x 10 mat has 25 zones
       }
     }
   }
@@ -79,9 +79,9 @@ void Processing::update(const uint16_t* mv, float dtS) {
   // Step 7: drift correction. Sensors slowly wander. While the mat has been EMPTY for a
   // while, nudge the baseline toward the current reading. Never done while someone is on it.
   if (total < EMPTY_TOTAL_MV) {
-    emptyForS_ += dtS;
+    if (emptyForS_ < EMPTY_HOLD_S) emptyForS_ += dtS;   // capped: it only has to reach the hold time
     if (emptyForS_ >= EMPTY_HOLD_S) {
-      for (uint8_t i = 0; i < MAT_CELLS; i++) {
+      for (uint16_t i = 0; i < MAT_CELLS; i++) {
         const int diff = (int)mv[i] - (int)base_[i];
         int step = diff / 16;                       // move 1/16 of the way each scan...
         if (step == 0 && diff != 0) step = (diff > 0) ? 1 : -1;   // ...but never stall short of the target
@@ -99,8 +99,8 @@ bool Processing::alarmActive() const {
   return false;
 }
 
-uint16_t Processing::takeNewAlerts() {
-  const uint16_t a = newAlerts_;
+uint32_t Processing::takeNewAlerts() {
+  const uint32_t a = newAlerts_;
   newAlerts_ = 0;
   return a;
 }
@@ -115,7 +115,7 @@ void Processing::acknowledge() {
 
 // What goes to the server: one byte per cell. 0 = no signal, 255 = FULL_SCALE_MV or more.
 void Processing::frameBytes(uint8_t* out) const {
-  for (uint8_t i = 0; i < MAT_CELLS; i++) {
+  for (uint16_t i = 0; i < MAT_CELLS; i++) {
     float v = filt_[i] * 255.0f / FULL_SCALE_MV;
     if (v < 0) v = 0;
     if (v > 255) v = 255;

@@ -73,6 +73,10 @@ const matSchema = new Schema(
     frames: { type: Number, default: 0 },
     // Commands waiting for the device ("ack", "tare"). Delivered in the reply to its next frame.
     pendingCommands: { type: [String], default: [] },
+    // How the latest frame arrived: "raw" bytes come from the ESP32 firmware, which subtracts
+    // its own empty-mat baseline; "json" comes from the simulator, tests or other tools.
+    lastFrameFormat: { type: String, enum: ['raw', 'json', null], default: null },
+    lastSampleAt: { type: Date, default: null }, // last PressureSample written for this bed
   },
   opts,
 );
@@ -129,6 +133,23 @@ const hwLogSchema = new Schema(
   opts,
 );
 export const HardwareLog = mongoose.model('HardwareLog', hwLogSchema);
+
+// Pressure history: one sample per bed per minute (peak and mean of the loaded cells), so the
+// History page can draw real trends without storing every frame. Kept for 7 days.
+const sampleSchema = new Schema(
+  {
+    bedId: { type: String, required: true },
+    at: { type: Date, required: true },
+    peakMmHg: Number,
+    peakZone: String,
+    meanLoadedMmHg: Number, // mean of the cells at or above loadedMmHg (0 when none)
+    loadedCells: Number,
+  },
+  opts,
+);
+sampleSchema.index({ bedId: 1, at: -1 });
+sampleSchema.index({ at: 1 }, { expireAfterSeconds: 7 * 24 * 3600 });
+export const PressureSample = mongoose.model('PressureSample', sampleSchema);
 
 const broadcastSchema = new Schema(
   { at: Date, pod: String, message: String, sentBy: String },

@@ -1,489 +1,405 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ActiveTab, PatientBed, PiezoCell, ZoneTimer } from './types';
-import { INITIAL_BEDS, INITIAL_AUDIT_LOGS, INITIAL_PIEZO_CELLS } from './data/mockData';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActiveTab, AuditLogItem, PatientBed, PiezoCell, ZoneTimer } from './types';
+import { INITIAL_AUDIT_LOGS, INITIAL_BEDS, INITIAL_PIEZO_CELLS, INITIAL_ZONE_TIMERS, SAMPLE_SETTINGS } from './data/mockData';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
 import { LiveHeatmapView } from './views/LiveHeatmapView';
 import { TurnScheduleView } from './views/TurnScheduleView';
 import { BedRosterView } from './views/BedRosterView';
 import { PeakAlertsView } from './views/PeakAlertsView';
 import { SensorHardwareView } from './views/SensorHardwareView';
-import { Modals } from './components/Modals';
-import { api, connectLive, LiveFrame } from './api/client';
+import { Modals, ToastState } from './components/Modals';
+import { api, connectLive, LiveFrame, Settings } from './api/client';
+import { setPressureScale } from './utils/heatmapColors';
+import { Icon } from './components/ui';
+
+const HEALTH_EVERY_MS = 15_000; // reconnect check
+const ROSTER_EVERY_MS = 30_000; // countdowns are computed on the server, so refresh them
+
+export type MatView = {
+  matrix: number[][]; // mmHg per cell
+  peakMmHg: number;
+  peakZone: string;
+  fresh: boolean; // frames arriving from the mat
+  lastFrameAt: string | null;
+};
+
+const SAMPLE_MAT: MatView = (() => {
+  const loads = INITIAL_PIEZO_CELLS.map((c) => c.load);
+  const peak = Math.max(...loads);
+  return {
+    matrix: Array.from({ length: 10 }, (_, r) => loads.slice(r * 10, r * 10 + 10)),
+    peakMmHg: peak,
+    peakZone: INITIAL_PIEZO_CELLS[loads.indexOf(peak)].zone,
+    fresh: false,
+    lastFrameAt: null,
+  };
+})();
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('monitor');
-  const [selectedPod, setSelectedPod] = useState<string>('BED 07 / ICU-POD-3');
+  const [connected, setConnected] = useState(false);
+  const connectedRef = useRef(false);
+
+  const [monitoredId, setMonitoredId] = useState('bed-07');
   const [beds, setBeds] = useState<PatientBed[]>(INITIAL_BEDS);
-  const [auditLogs, setAuditLogs] = useState(INITIAL_AUDIT_LOGS);
-  const [piezoCells, setPiezoCells] = useState<PiezoCell[]>(INITIAL_PIEZO_CELLS);
-  const [liveTimers, setLiveTimers] = useState<ZoneTimer[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
+  const [cells, setCells] = useState<PiezoCell[]>(INITIAL_PIEZO_CELLS);
+  const [timers, setTimers] = useState<ZoneTimer[]>(INITIAL_ZONE_TIMERS);
+  const [mat, setMat] = useState<MatView>(SAMPLE_MAT);
+  const [settings, setSettings] = useState<Settings>(SAMPLE_SETTINGS);
 
-  // Live telemetry state
-  const [isApiConnected, setIsApiConnected] = useState<boolean>(false);
-  const [liveMatrix, setLiveMatrix] = useState<number[][] | null>(null);
-  const [livePeakMmHg, setLivePeakMmHg] = useState<number | null>(null);
-  const [livePeakZone, setLivePeakZone] = useState<string | null>(null);
-
-  // Modals state
   const [turnModalBed, setTurnModalBed] = useState<PatientBed | null>(null);
-  const [isThresholdOpen, setIsThresholdOpen] = useState<boolean>(false);
-  const [isProtocolOpen, setIsProtocolOpen] = useState<boolean>(false);
+  const [isThresholdOpen, setIsThresholdOpen] = useState(false);
+  const [isProtocolOpen, setIsProtocolOpen] = useState(false);
   const [inspectBed, setInspectBed] = useState<PatientBed | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
-  // Toast state
-  const [toast, setToast] = useState<{ title: string; desc?: string; visible: boolean } | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+  const showToast = useCallback((title: string, desc?: string, tone: ToastState['tone'] = 'ok') => {
+    window.clearTimeout(toastTimer.current);
+    setToast({ title, desc, tone });
+    toastTimer.current = window.setTimeout(() => setToast(null), tone === 'error' ? 6000 : 3800);
+  }, []);
+  const showError = useCallback((what: string, e: unknown) => showToast(what, (e as Error)?.message || 'Request failed', 'error'), [showToast]);
 
-  const showToast = useCallback((title: string, desc?: string) => {
-    setToast({ title, desc, visible: true });
-    setTimeout(() => {
-      setToast((prev) => (prev ? { ...prev, visible: false } : null));
-    }, 3800);
+  const monitoredBed = beds.find((b) => b.id === monitoredId) ?? beds[0];
+  const monitoredRef = useRef(monitoredId);
+  monitoredRef.current = monitoredId;
+
+  useEffect(() => setPressureScale(settings.telemetry.levelMmHg), [settings]);
+
+  // ---- loading from the API ----------------------------------------------------------------
+  const loadBedDetail = useCallback(async (bedId: string) => {
+    const [c, t, m] = await Promise.all([api.mats.cells(bedId), api.beds.zoneTimers(bedId), api.beds.matrix(bedId)]);
+    if (monitoredRef.current !== bedId) return; // the user switched beds meanwhile
+    setCells(c);
+    setTimers(t);
+    setMat({ matrix: m.matrix, peakMmHg: m.peakMmHg, peakZone: m.peakZone, fresh: m.fresh, lastFrameAt: m.lastFrameAt });
   }, []);
 
-  const selectedBed = beds.find((b) => b.id === 'bed-07' || b.bedNumber === 'BED 07') || beds[0];
-
-  // Sync data from Express API
-  const syncFromApi = useCallback(async () => {
-    try {
-      const health = await api.health();
-      if (!health) {
-        setIsApiConnected(false);
-        return false;
-      }
-
-      setIsApiConnected(true);
-
-      // Fetch beds
-      const apiBeds = await api.beds.list().catch(() => null);
-      if (apiBeds && apiBeds.length > 0) {
-        setBeds(apiBeds);
-      }
-
-      // Fetch audit logs
-      const apiLogs = await api.auditLogs.list().catch(() => null);
-      if (apiLogs && apiLogs.length > 0) {
-        setAuditLogs(apiLogs);
-      }
-
-      // Fetch mat cells
-      const cells = await api.mats.cells('bed-07').catch(() => null);
-      if (cells && cells.length > 0) {
-        setPiezoCells(cells);
-      }
-
-      // Fetch zone timers
-      const timers = await api.beds.zoneTimers('bed-07').catch(() => null);
-      if (timers && timers.length > 0) {
-        setLiveTimers(timers);
-      }
-
-      // Fetch initial matrix
-      const matrixRes = await api.beds.matrix('bed-07').catch(() => null);
-      if (matrixRes && matrixRes.matrix) {
-        setLiveMatrix(matrixRes.matrix);
-        setLivePeakMmHg(matrixRes.peakMmHg);
-        setLivePeakZone(matrixRes.peakZone);
-      }
-
-      return true;
-    } catch {
-      setIsApiConnected(false);
-      return false;
+  const loadAll = useCallback(async () => {
+    // When connected, the API is the only source: an empty list stays empty (no mock fill-in).
+    const [b, logs, s] = await Promise.all([api.beds.list(), api.auditLogs.list(), api.settings.get()]);
+    setBeds(b);
+    setAuditLogs(logs);
+    setSettings(s);
+    const id = b.some((x) => x.id === monitoredRef.current) ? monitoredRef.current : b[0]?.id;
+    if (id) {
+      if (id !== monitoredRef.current) setMonitoredId(id);
+      monitoredRef.current = id;
+      await loadBedDetail(id);
     }
+  }, [loadBedDetail]);
+
+  const goOffline = useCallback(() => {
+    connectedRef.current = false;
+    setConnected(false);
+    setBeds(INITIAL_BEDS);
+    setAuditLogs(INITIAL_AUDIT_LOGS);
+    setCells(INITIAL_PIEZO_CELLS);
+    setTimers(INITIAL_ZONE_TIMERS);
+    setMat(SAMPLE_MAT);
+    setSettings(SAMPLE_SETTINGS);
   }, []);
 
-  // On mount: attempt connection and set up SSE stream + heartbeat poll
-  const liveStreamCleanup = useRef<(() => void) | null>(null);
-
-  const stopLiveStream = useCallback(() => {
-    if (liveStreamCleanup.current) {
-      liveStreamCleanup.current();
-      liveStreamCleanup.current = null;
-    }
-  }, []);
-
-  const startLiveStream = useCallback(() => {
-    if (liveStreamCleanup.current) return;
-    liveStreamCleanup.current = connectLive({
-      onFrame: (f: LiveFrame) => {
-        setIsApiConnected(true);
-        if (f.bedId === 'bed-07' || !f.bedId) {
-          if (f.matrix && f.matrix.length === 8) {
-            setLiveMatrix(f.matrix);
-          }
-          if (typeof f.peakMmHg === 'number') {
-            setLivePeakMmHg(f.peakMmHg);
-          }
-          if (f.peakZone) {
-            setLivePeakZone(f.peakZone);
-          }
-          if (f.zoneTimers && f.zoneTimers.length > 0) {
-            setLiveTimers(f.zoneTimers);
-          }
-        }
-      },
-      onBed: (updatedBed) => {
-        setIsApiConnected(true);
-        setBeds((prev) =>
-          prev.map((b) => (b.id === updatedBed.id ? { ...b, ...updatedBed } : b))
-        );
-      },
-      onAlert: (alert) => {
-        setIsApiConnected(true);
-        setAuditLogs((prev) => [alert, ...prev]);
-        if (alert.status === 'ACTIVE') {
-          showToast(`ALERT: ${alert.zoneLocus}`, `${alert.bedUnit} reached ${alert.peakMmHg} mmHg peak.`);
-        }
-      },
-      onError: () => {
-        // SSE disconnected or offline, handled gracefully
-      },
-    });
-  }, [showToast]);
-
+  // ---- connection: health check, live stream, roster refresh ---------------------------------
   useEffect(() => {
-    let isMounted = true;
+    let stopStream: (() => void) | null = null;
+    let cancelled = false;
 
-    // Initial check
-    syncFromApi().then((connected) => {
-      if (!isMounted) return;
-      if (connected) {
-        showToast('API CONNECTED', 'Connected to Perfusense Express + MongoDB backend.');
-        startLiveStream();
-      }
-    });
-
-    // Background heartbeat to reconnect if server starts later
-    const heartbeatTimer = setInterval(async () => {
-      const h = await api.health();
-      if (h && h.ok) {
-        if (!isApiConnected) {
-          setIsApiConnected(true);
-          syncFromApi();
-          showToast('BACKEND DETECTED', 'Synchronized live clinical data from MongoDB.');
-          startLiveStream();
-        }
-      } else {
-        if (isApiConnected) {
-          setIsApiConnected(false);
-          stopLiveStream();
-        }
-      }
-    }, 15000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(heartbeatTimer);
-      stopLiveStream();
+    const startStream = () => {
+      if (stopStream) return;
+      stopStream = connectLive({
+        onFrame: (f: LiveFrame) => {
+          if (f.bedId !== monitoredRef.current) return;
+          if (Array.isArray(f.matrix) && f.matrix.length > 0) {
+            setMat({ matrix: f.matrix, peakMmHg: f.peakMmHg, peakZone: f.peakZone, fresh: true, lastFrameAt: f.at });
+          }
+          if (f.zoneTimers?.length) setTimers(f.zoneTimers);
+        },
+        onBed: (updated) => setBeds((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))),
+        onAlert: (alert) => {
+          setAuditLogs((prev) => [alert, ...prev.filter((a) => a.id !== alert.id)]);
+          if (alert.status === 'ACTIVE') showToast(`ALERT: ${alert.zoneLocus}`, `${alert.bedUnit}: peak ${alert.peakMmHg} mmHg`, 'alert');
+        },
+      });
     };
-  }, [syncFromApi, showToast, isApiConnected, startLiveStream, stopLiveStream]);
 
-  // Turn confirmation handler (calls API if connected, else optimistic local update)
-  const handleConfirmTurn = async (bedId: string, posture: string, note?: string) => {
-    const targetBed = beds.find((b) => b.id === bedId) || selectedBed;
-    const targetId = targetBed?.id || 'bed-07';
-
-    if (isApiConnected) {
-      try {
-        const res = await api.beds.logTurn(targetId, {
-          posture,
-          note,
-          rn: 'RN K. Nygård',
-        });
-        if (res && res.bed) {
-          setBeds((prev) => prev.map((b) => (b.id === targetId ? { ...b, ...res.bed } : b)));
+    const check = async () => {
+      const h = await api.health();
+      if (cancelled) return;
+      if (h?.ok && !connectedRef.current) {
+        try {
+          await loadAll();
+          connectedRef.current = true;
+          setConnected(true);
+          startStream();
+        } catch (e) {
+          showError('COULD NOT LOAD DATA', e);
         }
-        if (res && res.log) {
-          setAuditLogs((prev) => [res.log, ...prev]);
-        }
-        // Refresh timers
-        const updatedTimers = await api.beds.zoneTimers(targetId).catch(() => null);
-        if (updatedTimers) setLiveTimers(updatedTimers);
-
-        showToast(
-          'REPOSITION LOGGED (API)',
-          `Patient ${targetBed?.patientName || targetId} re-zeroed in ${posture}. Saved to MongoDB.`
-        );
-        return;
-      } catch (e) {
-        console.warn('API logTurn failed, falling back to local update:', e);
+      } else if (!h?.ok && connectedRef.current) {
+        stopStream?.();
+        stopStream = null;
+        goOffline();
+        showToast('BACKEND OFFLINE', 'Showing SAMPLE DATA until the API is back.', 'error');
       }
+    };
+
+    void check();
+    const health = window.setInterval(check, HEALTH_EVERY_MS);
+    const roster = window.setInterval(() => {
+      if (connectedRef.current) api.beds.list().then(setBeds).catch(() => undefined);
+    }, ROSTER_EVERY_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(health);
+      window.clearInterval(roster);
+      stopStream?.();
+    };
+  }, [loadAll, goOffline, showToast, showError]);
+
+  // Switching the monitored bed reloads its detail.
+  const monitorBed = useCallback(
+    (bedId: string) => {
+      setMonitoredId(bedId);
+      monitoredRef.current = bedId;
+      setActiveTab('monitor');
+      if (connectedRef.current) loadBedDetail(bedId).catch((e) => showError('COULD NOT LOAD BED', e));
+    },
+    [loadBedDetail, showError],
+  );
+
+  // ---- actions (API when connected; sample-only otherwise) -------------------------------------
+  const sampleNote = 'SAMPLE DATA: not saved (backend offline).';
+
+  const handleConfirmTurn = async (bedId: string, posture: string, note?: string, skinChecks?: boolean[]) => {
+    const bed = beds.find((b) => b.id === bedId);
+    if (connectedRef.current) {
+      try {
+        const res = await api.beds.logTurn(bedId, { posture, note, skinChecks });
+        setBeds((prev) => prev.map((b) => (b.id === bedId ? { ...b, ...res.bed } : b)));
+        setAuditLogs((prev) => [res.log, ...prev.map((l) => (l.status === 'ACTIVE' && l.bedUnit === res.log.bedUnit ? { ...l, status: 'RESOLVED' as const } : l))]);
+        if (bedId === monitoredRef.current) await loadBedDetail(bedId);
+        showToast('TURN LOGGED', `${bed?.bedNumber ?? bedId}: ${posture}. Timers reset; the mat clears its alarm on its next frame.`);
+      } catch (e) {
+        showError('TURN NOT SAVED', e);
+      }
+      return;
     }
-
-    // Local fallback update
-    setBeds((prev) =>
-      prev.map((b) => {
-        if (b.id === targetId || b.id === bedId) {
-          return {
-            ...b,
-            status: 'optimal',
-            statusLabel: 'OPTIMAL',
-            posture: posture,
-            countdown: '1h 58m',
-            isOverdue: false,
-            peakPressure: 16,
-          };
-        }
-        return b;
-      })
-    );
-
-    const nowStr = new Date().toTimeString().split(' ')[0] + ' EST';
-    setAuditLogs((prev) => [
-      {
-        id: `log-${Date.now()}`,
-        timestamp: nowStr,
-        bedUnit: `${targetBed.bedNumber} [${targetBed.pod}]`,
-        patientId: targetBed.patientId.split(' ')[0] || '#PT-NEW',
-        patientName: targetBed.patientName,
-        zoneLocus: 'OFFLOADED',
-        zoneCategory: 'Sacrum',
-        peakMmHg: 16,
-        dwellMin: 2,
-        actionTaken: `Repositioned to ${posture}. ${note || 'Skin checked intact.'}`,
-        attendingRn: 'RN K. Nygård (#892)',
-        status: 'RESOLVED',
-      },
-      ...prev,
-    ]);
-
-    showToast(
-      'REPOSITION LOGGED (LOCAL)',
-      `Patient ${targetBed?.patientName || targetId} re-zeroed in ${posture}.`
-    );
+    setBeds((prev) => prev.map((b) => (b.id === bedId ? { ...b, posture, status: 'optimal', statusLabel: 'OPTIMAL', isOverdue: false } : b)));
+    if (bedId === monitoredId) setTimers((prev) => prev.map((t) => ({ ...t, elapsedMin: 0, isNearLimit: false, isElevated: false })));
+    showToast('TURN LOGGED', sampleNote);
   };
 
-  // Snooze handler
   const handleSnooze = async () => {
-    const targetId = selectedBed?.id || 'bed-07';
-    if (isApiConnected) {
-      try {
-        const updated = await api.beds.snooze(targetId, 5);
-        if (updated) {
-          setBeds((prev) => prev.map((b) => (b.id === targetId ? { ...b, ...updated } : b)));
-        }
-        showToast('ALARM SNOOZED +5 MIN', 'Clinical alert deferred for bedside assessment (saved to API).');
-        return;
-      } catch (e) {
-        console.warn('API snooze failed:', e);
-      }
+    if (!monitoredBed) return;
+    if (!connectedRef.current) return showToast('SNOOZED 5 MIN', sampleNote);
+    try {
+      const updated = await api.beds.snooze(monitoredBed.id, 5);
+      setBeds((prev) => prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b)));
+      showToast('SNOOZED 5 MIN', `${monitoredBed.bedNumber}: turn reminder moved 5 minutes.`);
+    } catch (e) {
+      showError('SNOOZE FAILED', e);
     }
-    showToast('ALARM SNOOZED +5 MIN', 'Clinical alert deferred for bedside assessment.');
   };
 
-  // Reset zone timer
   const handleResetZone = async (zoneName: string) => {
-    const targetId = selectedBed?.id || 'bed-07';
-    if (isApiConnected) {
-      try {
-        const res = await api.beds.resetZone(targetId, zoneName, 'RN K. Nygård');
-        if (res && res.zoneTimers) {
-          setLiveTimers(res.zoneTimers);
-        }
-        showToast(`ZONE OFFLOADED: ${zoneName}`, `Timer reset on backend. Bedside reposition verified.`);
-        return;
-      } catch (e) {
-        console.warn('API resetZone failed:', e);
-      }
+    if (!connectedRef.current) {
+      setTimers((prev) => prev.map((t) => (t.name === zoneName ? { ...t, elapsedMin: 0, isNearLimit: false, isElevated: false } : t)));
+      return showToast(`ZONE RESET: ${zoneName}`, sampleNote);
     }
-
-    setLiveTimers((prev) =>
-      prev.map((t) => (t.name === zoneName ? { ...t, elapsedMin: 0, isNearLimit: false, isElevated: false } : t))
-    );
-    showToast(`ZONE OFFLOADED: ${zoneName}`, `Timer reset to 0m. Bedside reposition verified.`);
+    try {
+      const res = await api.beds.resetZone(monitoredId, zoneName);
+      setTimers(await api.beds.zoneTimers(monitoredId));
+      if (res.resolvedAlerts) setAuditLogs(await api.auditLogs.list());
+      showToast(`ZONE RESET: ${res.zone}`, res.resolvedAlerts ? `${res.resolvedAlerts} alert(s) resolved.` : 'Timer back to 0.');
+    } catch (e) {
+      showError('RESET FAILED', e);
+    }
   };
 
-  // Reset all zone timers
   const handleResetAllZones = async () => {
-    const targetId = selectedBed?.id || 'bed-07';
-    if (isApiConnected) {
-      try {
-        await api.beds.resetAllZones(targetId, 'RN K. Nygård');
-        const updated = await api.beds.zoneTimers(targetId).catch(() => null);
-        if (updated) setLiveTimers(updated);
-        showToast('ALL ZONES RE-ZEROED', 'Full patient posture re-zeroed on backend.');
-        return;
-      } catch (e) {
-        console.warn('API resetAllZones failed:', e);
-      }
+    if (!connectedRef.current) {
+      setTimers((prev) => prev.map((t) => ({ ...t, elapsedMin: 0, isNearLimit: false, isElevated: false })));
+      return showToast('ALL ZONES RESET', sampleNote);
     }
-
-    setLiveTimers((prev) =>
-      prev.map((t) => ({ ...t, elapsedMin: 0, isNearLimit: false, isElevated: false }))
-    );
-    showToast('ALL ZONES RE-ZEROED', 'Full patient posture re-zeroed and logged to clinical flowsheet.');
+    try {
+      const res = await api.beds.resetAllZones(monitoredId);
+      setTimers(await api.beds.zoneTimers(monitoredId));
+      setAuditLogs(await api.auditLogs.list());
+      showToast('ALL ZONES RESET', `${res.resolvedAlerts} alert(s) resolved.`);
+    } catch (e) {
+      showError('RESET FAILED', e);
+    }
   };
 
-  // Tare sensor mat
+  const handleAlertAction = async (id: string, action: 'acknowledge' | 'resolve') => {
+    if (!connectedRef.current) {
+      setAuditLogs((prev) => prev.map((l) => (l.id === id && action === 'resolve' ? { ...l, status: 'RESOLVED' } : l)));
+      return showToast(action === 'resolve' ? 'ALERT RESOLVED' : 'ALERT ACKNOWLEDGED', sampleNote);
+    }
+    try {
+      const rn = monitoredBed?.assignedRn || 'Ward RN';
+      const row = action === 'resolve' ? await api.auditLogs.resolve(id, 'Resolved from the Zones page', rn) : await api.auditLogs.acknowledge(id, rn);
+      setAuditLogs((prev) => prev.map((l) => (l.id === id ? { ...l, ...row } : l)));
+      showToast(action === 'resolve' ? 'ALERT RESOLVED' : 'ALERT ACKNOWLEDGED', row.zoneLocus);
+    } catch (e) {
+      showError('ALERT UPDATE FAILED', e);
+    }
+  };
+
   const handleTareMat = async () => {
-    const targetId = selectedBed?.id || 'bed-07';
-    if (isApiConnected) {
-      try {
-        const res = await api.mats.tare(targetId);
-        showToast('MAT TARE COMPLETE', res.message || 'Baseline plane stored on server.');
-        return;
-      } catch (e: any) {
-        showToast('TARE NOTICE', e.message || 'Tare requested; make sure the mat is empty.');
-        return;
-      }
+    if (!connectedRef.current) return showToast('TARE', sampleNote);
+    try {
+      const res = await api.mats.tare(monitoredId);
+      showToast('TARE APPLIED', res.message);
+    } catch (e) {
+      showError('TARE REFUSED', e);
     }
-    showToast('MAT TARE COMPLETE (LOCAL)', 'Baseline zero plane re-calibrated across all 100 cells.');
   };
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const handleSelfTest = async () => {
+    if (!connectedRef.current) {
+      showToast('SELF-TEST', sampleNote);
+      return null;
+    }
+    try {
+      return await api.mats.selfTest(monitoredId);
+    } catch (e) {
+      showError('SELF-TEST FAILED', e);
+      return null;
+    }
+  };
+
+  const saveSettings = async (patch: Parameters<typeof api.settings.update>[0], label: string) => {
+    if (!connectedRef.current) return showToast(label, sampleNote);
+    try {
+      setSettings(await api.settings.update(patch));
+      showToast(label, 'Saved on the server.');
+      if (patch.protocol || patch.zoneLimitsMin) setBeds(await api.beds.list());
+    } catch (e) {
+      showError('SETTINGS NOT SAVED', e);
+    }
+  };
+
+  const activeAlerts = useMemo(() => auditLogs.filter((l) => l.status === 'ACTIVE').length, [auditLogs]);
+  const dueBeds = useMemo(() => beds.filter((b) => b.status === 'due_now' || b.status === 'overdue').length, [beds]);
+  const nearZones = timers.filter((t) => t.isNearLimit).length;
+
+  const tabs: { id: ActiveTab; label: string; icon: React.ComponentProps<typeof Icon>['name']; badge?: number; urgent?: boolean }[] = [
+    { id: 'monitor', label: 'Monitor', icon: 'monitor' },
+    { id: 'bed-roster', label: 'Beds', icon: 'beds', badge: dueBeds || undefined, urgent: dueBeds > 0 },
+    { id: 'peak-alerts', label: 'Zones', icon: 'zones', badge: activeAlerts + nearZones || undefined, urgent: activeAlerts > 0 },
+    { id: 'turn-schedule', label: 'History', icon: 'history' },
+    { id: 'sensor-mat-hardware', label: 'Mat', icon: 'mat' },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#f1fcf9] text-[#121c1b] relative font-body-md overflow-x-hidden">
-      {/* Top Header */}
-      <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        isApiConnected={isApiConnected}
-        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-      />
+    <div className="min-h-screen bg-[#f1fcf9] text-[#121c1b] font-body-md overflow-x-hidden">
+      <Header tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} connected={connected} bed={monitoredBed} matFresh={mat.fresh} />
 
-      {/* Left Sidebar (Desktop flyout + Mobile sliding drawer) */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        selectedPod={selectedPod}
-        setSelectedPod={setSelectedPod}
-        isOpenControlled={isSidebarOpen}
-        onCloseControlled={() => setIsSidebarOpen(false)}
-      />
+      {!connected && (
+        <div className="fixed top-14 sm:top-16 left-0 right-0 z-40 bg-[#d97757] text-white border-b-[3px] border-[#121c1b] px-3 py-1 text-center font-label-mono-sm text-[10px] sm:text-[11px] font-bold uppercase">
+          SAMPLE DATA: backend offline. Run <code className="bg-[#121c1b] px-1">npm run dev:all</code> with MongoDB for live data.
+        </div>
+      )}
 
-      {/* Main Content Area - Responsive Mobile & Desktop Spacing */}
-      <div className="w-full px-2.5 sm:px-6 lg:px-8 pt-16 sm:pt-20 pb-20 md:pb-12">
-        <main className="w-full max-w-[1720px] mx-auto">
-          {activeTab === 'monitor' && (
+      <div className={`w-full px-2.5 sm:px-6 lg:px-8 ${connected ? 'pt-16 sm:pt-20' : 'pt-24 sm:pt-28'} pb-20 md:pb-12`}>
+        <main className="w-full max-w-[1500px] mx-auto">
+          {activeTab === 'monitor' && monitoredBed && (
             <LiveHeatmapView
-              onOpenProtocolEdit={() => setIsProtocolOpen(true)}
-              onOpenTurnLog={() => {
-                setTurnModalBed(selectedBed);
-              }}
-              showToast={showToast}
-              liveMatrix={liveMatrix}
-              peakPressure={livePeakMmHg}
-              peakZone={livePeakZone}
-              isApiConnected={isApiConnected}
+              bed={monitoredBed}
+              mat={mat}
+              timers={timers}
+              settings={settings}
+              connected={connected}
+              onLogTurn={() => setTurnModalBed(monitoredBed)}
               onSnooze={handleSnooze}
-              bed={selectedBed}
+              onOpenZones={() => setActiveTab('peak-alerts')}
             />
           )}
-
-          {activeTab === 'turn-schedule' && (
-            <TurnScheduleView
-              showToast={showToast}
-              bedId={selectedBed?.id || 'bed-07'}
-              isApiConnected={isApiConnected}
-            />
-          )}
-
           {activeTab === 'bed-roster' && (
             <BedRosterView
               beds={beds}
+              monitoredId={monitoredBed?.id ?? monitoredId}
+              connected={connected}
+              cadenceMin={settings.protocol.cadenceMin}
+              onMonitor={monitorBed}
               onLogTurnForBed={(b) => setTurnModalBed(b)}
               onInspectBed={(b) => setInspectBed(b)}
-              showToast={showToast}
             />
           )}
-
-          {activeTab === 'peak-alerts' && (
+          {activeTab === 'peak-alerts' && monitoredBed && (
             <PeakAlertsView
+              bed={monitoredBed}
+              timers={timers}
               auditLogs={auditLogs}
+              settings={settings}
+              connected={connected}
               onOpenThresholds={() => setIsThresholdOpen(true)}
-              showToast={showToast}
-              liveTimers={liveTimers}
+              onOpenProtocol={() => setIsProtocolOpen(true)}
               onResetZone={handleResetZone}
               onResetAll={handleResetAllZones}
-              isApiConnected={isApiConnected}
+              onAlertAction={handleAlertAction}
             />
           )}
-
-          {activeTab === 'sensor-mat-hardware' && (
-            <SensorHardwareView
-              cells={piezoCells}
-              showToast={showToast}
-              onTare={handleTareMat}
-              isApiConnected={isApiConnected}
-            />
+          {activeTab === 'turn-schedule' && monitoredBed && <TurnScheduleView bed={monitoredBed} connected={connected} settings={settings} />}
+          {activeTab === 'sensor-mat-hardware' && monitoredBed && (
+            <SensorHardwareView bed={monitoredBed} cells={cells} mat={mat} connected={connected} onTare={handleTareMat} onSelfTest={handleSelfTest} />
           )}
         </main>
       </div>
 
-      {/* Mobile Ergonomic Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#ffffff] border-t-[3px] border-[#121c1b] flex items-center justify-around h-16 shadow-[0px_-2px_6px_rgba(0,0,0,0.08)] md:hidden px-1">
-        {[
-          { id: 'monitor' as ActiveTab, label: 'Monitor', icon: 'sensors' },
-          { id: 'bed-roster' as ActiveTab, label: 'Beds', icon: 'bed', badge: `${beds.length}` },
-          { id: 'turn-schedule' as ActiveTab, label: 'History', icon: 'history' },
-          { id: 'peak-alerts' as ActiveTab, label: 'Zones', icon: 'hourglass_empty', badge: '6' },
-          { id: 'sensor-mat-hardware' as ActiveTab, label: 'Mat', icon: 'memory' },
-        ].map((item) => {
-          const isActive = activeTab === item.id;
+      {/* Phone navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t-[3px] border-[#121c1b] flex items-stretch h-16 md:hidden">
+        {tabs.map((t) => {
+          const active = activeTab === t.id;
           return (
             <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`flex-1 py-1 px-0.5 flex flex-col items-center justify-center gap-0.5 transition-all select-none relative cursor-pointer ${
-                isActive ? 'text-[#1d635d]' : 'text-[#3f4947] hover:text-[#121c1b]'
-              }`}
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 relative ${active ? 'text-[#121c1b]' : 'text-[#3f4947]'}`}
             >
-              <div
-                className={`w-9 h-7 rounded-full flex items-center justify-center transition-all ${
-                  isActive ? 'bg-[#adefe7] text-[#00201d] font-bold border border-[#121c1b]' : ''
-                }`}
-              >
-                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-              </div>
-              <span className={`text-[10px] font-bold uppercase tracking-tight leading-none ${isActive ? 'text-[#121c1b]' : ''}`}>
-                {item.label}
+              <span className={`w-10 h-7 flex items-center justify-center ${active ? 'bg-[#adefe7] border-[2px] border-[#121c1b]' : ''}`}>
+                <Icon name={t.icon} />
               </span>
-              {item.badge && !isActive && (
-                <span className="absolute top-1 right-2 text-[8px] bg-[#121c1b] text-white px-1 py-0 rounded font-mono font-bold leading-tight">
-                  {item.badge}
+              <span className="text-[10px] font-bold uppercase leading-none">{t.label}</span>
+              {t.badge ? (
+                <span className={`absolute top-1 right-[18%] text-[9px] px-1 border border-[#121c1b] font-bold leading-tight ${t.urgent ? 'bg-[#8b2635] text-white' : 'bg-[#121c1b] text-white'}`}>
+                  {t.badge}
                 </span>
-              )}
+              ) : null}
             </button>
           );
         })}
       </nav>
 
-      {/* Interactive Modals & Toast notifications */}
       <Modals
+        settings={settings}
         turnModalBed={turnModalBed}
         onCloseTurnModal={() => setTurnModalBed(null)}
         onConfirmTurn={handleConfirmTurn}
         isThresholdOpen={isThresholdOpen}
         onCloseThreshold={() => setIsThresholdOpen(false)}
-        onSaveThreshold={(crit, dwell, warn, autoPage) => {
-          if (isApiConnected) {
-            api.settings.update({
-              thresholds: { criticalMmHg: crit, maxDwellMin: dwell, warnMmHg: warn, autoPage },
-            }).catch(console.warn);
-          }
-          showToast(
-            'THRESHOLDS RE-CALIBRATED',
-            `Critical: ${crit} mmHg, Max Dwell: ${dwell}m, Pager: ${autoPage ? 'ON' : 'OFF'}`
-          );
-        }}
+        onSaveThreshold={(thresholds, levelMmHg) =>
+          // One pressure scale: the sensor-map bands follow the heatmap bands.
+          saveSettings(
+            { thresholds, telemetry: { levelMmHg, cellWarnMmHg: levelMmHg[1], cellCriticalMmHg: levelMmHg[2] } },
+            'LIMITS SAVED',
+          )
+        }
         isProtocolOpen={isProtocolOpen}
         onCloseProtocol={() => setIsProtocolOpen(false)}
-        onSaveProtocol={(cadence) => {
-          if (isApiConnected) {
-            api.settings.update({
-              protocol: { cadenceMin: cadence },
-            }).catch(console.warn);
-          }
-          showToast(
-            'PROTOCOL UPDATED',
-            `Ward cadence set to ${cadence} minutes. Timers refreshed.`
-          );
-        }}
+        onSaveProtocol={(cadenceMin) => saveSettings({ protocol: { cadenceMin } }, 'TURN CADENCE SAVED')}
         inspectBed={inspectBed}
         onCloseInspect={() => setInspectBed(null)}
+        onMonitorBed={(id) => {
+          setInspectBed(null);
+          monitorBed(id);
+        }}
         toast={toast}
+        onDismissToast={() => setToast(null)}
       />
     </div>
   );

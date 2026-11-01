@@ -1,31 +1,77 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PatientBed } from '../types';
+import type { Settings } from '../api/client';
+import { Button } from './ui';
+
+export type ToastState = { title: string; desc?: string; tone: 'ok' | 'error' | 'alert' };
 
 interface ModalsProps {
-  // Turn Log Modal
+  settings: Settings;
   turnModalBed: PatientBed | null;
   onCloseTurnModal: () => void;
-  onConfirmTurn: (bedId: string, posture: string, note?: string) => void;
-
-  // Thresholds Modal
+  onConfirmTurn: (bedId: string, posture: string, note?: string, skinChecks?: boolean[]) => void;
   isThresholdOpen: boolean;
   onCloseThreshold: () => void;
-  onSaveThreshold: (crit: number, dwell: number, warn: number, autoPage: boolean) => void;
-
-  // Protocol Edit Modal
+  onSaveThreshold: (thresholds: Settings['thresholds'], levelMmHg: [number, number, number]) => void;
   isProtocolOpen: boolean;
   onCloseProtocol: () => void;
   onSaveProtocol: (cadenceMin: number) => void;
-
-  // Bed Inspect Modal
   inspectBed: PatientBed | null;
   onCloseInspect: () => void;
+  onMonitorBed: (bedId: string) => void;
+  toast: ToastState | null;
+  onDismissToast: () => void;
+}
 
-  // Toast
-  toast: { title: string; desc?: string; visible: boolean } | null;
+const POSTURES = ['LEFT LATERAL 30°', 'RIGHT LATERAL 30°', 'SUPINE', 'SUPINE + FLOAT HEELS', 'HIGH FOWLER 45°'];
+const SKIN_CHECKS = ['Skin over the sacrum checked', 'Heels checked and floated', 'Hips / trochanters checked'];
+
+function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-[#121c1b]/60" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#ede8dc] border-[4px] border-[#121c1b] shadow-[8px_8px_0px_#121c1b] max-w-lg w-full p-4 sm:p-5 max-h-[92vh] overflow-y-auto"
+      >
+        <div className="flex justify-between items-center pb-3 mb-3 border-b-[3px] border-[#121c1b]">
+          <h3 className="font-bold uppercase text-sm truncate">{title}</h3>
+          <button onClick={onClose} aria-label="Close" className="w-8 h-8 border-[2px] border-[#121c1b] bg-white hover:bg-[#ebf6f4]">
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function NumberField({ label, value, onChange, hint }: { label: string; value: number; onChange: (v: number) => void; hint?: string }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="font-label-mono-sm uppercase font-bold text-[10px] sm:text-xs">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="number"
+          value={Number.isFinite(value) ? value : ''}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="bg-white px-2.5 py-1.5 w-24 border-[2px] border-[#121c1b] font-bold text-sm"
+        />
+        {hint && <span className="text-[10px] text-[#3f4947]">{hint}</span>}
+      </span>
+    </label>
+  );
 }
 
 export const Modals: React.FC<ModalsProps> = ({
+  settings,
   turnModalBed,
   onCloseTurnModal,
   onConfirmTurn,
@@ -37,360 +83,215 @@ export const Modals: React.FC<ModalsProps> = ({
   onSaveProtocol,
   inspectBed,
   onCloseInspect,
+  onMonitorBed,
   toast,
+  onDismissToast,
 }) => {
-  const [selectedPosture, setSelectedPosture] = useState<string>('LEFT LATERAL 30°');
-  const [turnNote, setTurnNote] = useState<string>('');
+  const [posture, setPosture] = useState(POSTURES[0]);
+  const [note, setNote] = useState('');
+  const [checks, setChecks] = useState<boolean[]>(SKIN_CHECKS.map(() => false));
+  const [th, setTh] = useState(settings.thresholds);
+  const [scale, setScale] = useState(settings.telemetry.levelMmHg);
+  const [cadence, setCadence] = useState(settings.protocol.cadenceMin);
 
-  // Threshold state
-  const [critVal, setCritVal] = useState<number>(65);
-  const [dwellVal, setDwellVal] = useState<number>(60);
-  const [warnVal, setWarnVal] = useState<number>(45);
-  const [autoPage, setAutoPage] = useState<boolean>(true);
+  // Each dialog opens with the current server values.
+  useEffect(() => {
+    if (turnModalBed) {
+      setNote('');
+      setChecks(SKIN_CHECKS.map(() => false));
+    }
+  }, [turnModalBed]);
+  useEffect(() => {
+    if (isThresholdOpen) {
+      setTh(settings.thresholds);
+      setScale(settings.telemetry.levelMmHg);
+    }
+  }, [isThresholdOpen, settings]);
+  useEffect(() => {
+    if (isProtocolOpen) setCadence(settings.protocol.cadenceMin);
+  }, [isProtocolOpen, settings]);
 
-  // Protocol edit state
-  const [protocolCadence, setProtocolCadence] = useState<number>(120);
+  const enforce = settings.protocol.skinEnforce;
+  const turnBlocked = enforce && !checks.every(Boolean);
+  const scaleOk = scale[0] < scale[1] && scale[1] < scale[2];
+  const thOk = th.warnMmHg < th.criticalMmHg;
 
   return (
     <>
-      {/* Toast Notification - Positioned above mobile bottom bar */}
-      {toast?.visible && (
-        <div className="fixed bottom-20 md:bottom-6 right-3 sm:right-6 left-3 sm:left-auto z-50 bg-[#121c1b] text-[#f1fcf9] p-3 sm:p-4 border-[3px] border-[#121c1b] shadow-[4px_4px_0px_#1d635d] sm:shadow-[6px_6px_0px_#1d635d] flex items-center gap-3 animate-bounce max-w-md">
-          <span className="material-symbols-outlined text-[#adefe7] text-[24px] sm:text-[28px] shrink-0">
-            check_circle
-          </span>
-          <div className="min-w-0">
-            <div className="font-label-mono-md uppercase font-bold text-xs sm:text-sm tracking-wide truncate">
-              {toast.title}
-            </div>
-            {toast.desc && (
-              <div className="font-body-sm text-[#adefe7] text-[11px] sm:text-xs mt-0.5 line-clamp-2">{toast.desc}</div>
-            )}
+      {toast && (
+        <div
+          role={toast.tone === 'ok' ? 'status' : 'alert'}
+          className={`fixed bottom-20 md:bottom-6 right-3 left-3 sm:left-auto z-50 max-w-md p-3 border-[3px] border-[#121c1b] shadow-[5px_5px_0px_#121c1b] flex items-start gap-3 ${
+            toast.tone === 'error' ? 'bg-[#8b2635] text-white' : toast.tone === 'alert' ? 'bg-[#d97757] text-white' : 'bg-[#121c1b] text-[#f1fcf9]'
+          }`}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="font-label-mono-md uppercase font-bold text-xs tracking-wide">{toast.title}</div>
+            {toast.desc && <div className="text-[11px] mt-0.5 opacity-90">{toast.desc}</div>}
           </div>
+          <button onClick={onDismissToast} aria-label="Dismiss" className="text-sm font-bold px-1">
+            ✕
+          </button>
         </div>
       )}
 
-      {/* Turn Log Modal */}
       {turnModalBed && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#121c1b]/60 backdrop-blur-none">
-          <div className="bg-[#EDE8DC] border-[3px] sm:border-[4px] border-[#121c1b] shadow-[6px_6px_0px_#121c1b] sm:shadow-[8px_8px_0px_#121c1b] max-w-lg w-full p-4 sm:p-6 select-none max-h-[92vh] overflow-y-auto animate-in fade-in">
-            <div className="flex justify-between items-center pb-2.5 sm:pb-3 border-b-[3px] border-[#121c1b] mb-3 sm:mb-4">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="w-3.5 h-3.5 bg-[#1d635d] border-2 border-[#121c1b] shrink-0"></span>
-                <span className="font-headline-sm text-[#121c1b] uppercase font-bold text-xs sm:text-sm truncate">
-                  {turnModalBed.bedNumber} // LOG REPOSITIONING
-                </span>
-              </div>
+        <Dialog title={`${turnModalBed.bedNumber} · log a turn`} onClose={onCloseTurnModal}>
+          <p className="text-xs mb-3">
+            New position for <strong>{turnModalBed.patientName}</strong>. Saving resets the body-area timers, resolves this bed's open alerts and tells the mat to clear its alarm.
+          </p>
+          <div className="grid grid-cols-1 xs:grid-cols-2 gap-2 mb-3">
+            {POSTURES.map((p) => (
               <button
-                onClick={onCloseTurnModal}
-                className="p-1 border-[2px] border-[#121c1b] bg-[#ffffff] hover:bg-[#ebf6f4] neo-btn shrink-0"
+                key={p}
+                onClick={() => setPosture(p)}
+                aria-pressed={posture === p}
+                className={`p-2.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-md text-[11px] uppercase font-bold text-left ${
+                  posture === p ? 'bg-[#1d635d] text-white' : 'bg-white hover:bg-[#ebf6f4]'
+                }`}
               >
-                <span className="material-symbols-outlined text-[18px] sm:text-[20px]">close</span>
+                {posture === p ? '● ' : '○ '}
+                {p}
               </button>
-            </div>
-
-            <p className="font-body-md text-[#121c1b] mb-3 text-xs sm:text-sm">
-              Select verified post-turn offload trajectory for patient{' '}
-              <strong>{turnModalBed.patientName}</strong>. Mat will re-zero baseline within 45 seconds.
-            </p>
-
-            <div className="grid grid-cols-1 xs:grid-cols-2 gap-2 sm:gap-3 mb-3 sm:mb-4">
-              {[
-                'LEFT LATERAL 30°',
-                'RIGHT LATERAL 30°',
-                'SUPINE + FLOAT HEELS',
-                'HIGH FOWLER 45°',
-              ].map((pose) => (
-                <button
-                  key={pose}
-                  onClick={() => setSelectedPosture(pose)}
-                  className={`p-2.5 sm:p-3 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-md text-[11px] sm:text-xs uppercase font-bold text-left transition-all ${
-                    selectedPosture === pose
-                      ? 'bg-[#1d635d] text-white'
-                      : 'bg-[#ffffff] text-[#121c1b] hover:bg-[#ebf6f4]'
-                  }`}
-                >
-                  [{selectedPosture === pose ? 'X' : ' '}] {pose}
-                </button>
-              ))}
-            </div>
-
-            <div className="mb-3 sm:mb-4">
-              <label className="font-label-mono-sm uppercase text-[#3f4947] block mb-1 font-bold text-[10px] sm:text-xs">
-                Clinical Skin Check Note:
-              </label>
-              <input
-                value={turnNote}
-                onChange={(e) => setTurnNote(e.target.value)}
-                placeholder="e.g. Skin intact, barrier cream applied, 30-deg wedge secure."
-                className="w-full bg-[#ffffff] border-[2px] border-[#121c1b] p-2 font-body-sm text-[#121c1b] outline-none shadow-[2px_2px_0px_#121c1b] text-xs"
-              />
-            </div>
-
-            <div className="flex flex-col-reverse xs:flex-row gap-2 sm:gap-3">
-              <button
-                onClick={onCloseTurnModal}
-                className="px-4 py-2.5 bg-[#ffffff] text-[#121c1b] border-[2px] sm:border-[3px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] sm:shadow-[3px_3px_0px_#121c1b] font-headline-sm uppercase text-xs sm:text-sm font-bold neo-btn"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  onConfirmTurn(turnModalBed.id, selectedPosture, turnNote);
-                  onCloseTurnModal();
-                }}
-                className="flex-1 bg-[#1d635d] text-white py-2.5 sm:py-3 border-[2px] sm:border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] sm:shadow-[4px_4px_0px_#121c1b] font-headline-sm text-xs sm:text-sm uppercase font-bold hover:bg-[#121c1b] neo-btn"
-              >
-                CONFIRM &amp; ZERO TIMER
-              </button>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
-
-      {/* Threshold Modal */}
-      {isThresholdOpen && (
-        <div className="fixed inset-0 bg-[#121c1b]/60 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-[#ffffff] text-[#121c1b] max-w-xl w-full p-4 sm:p-6 border-[3px] sm:border-[4px] border-[#121c1b] shadow-[6px_6px_0px_#121c1b] sm:shadow-[8px_8px_0px_#121c1b] relative select-none max-h-[92vh] overflow-y-auto animate-in fade-in">
-            <div className="flex items-center justify-between pb-2.5 sm:pb-3 border-b-[3px] border-[#121c1b]">
-              <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 bg-[#99462a]"></span>
-                <h3 className="font-headline-md uppercase font-bold text-xs sm:text-base">
-                  Alert Threshold Settings
-                </h3>
-              </div>
-              <button
-                onClick={onCloseThreshold}
-                className="p-1 border-[2px] border-[#121c1b] hover:bg-[#dfeae8] neo-btn"
-              >
-                <span className="material-symbols-outlined text-[18px] sm:text-[20px]">close</span>
-              </button>
-            </div>
-
-            <p className="font-body-sm text-[#3f4947] my-2.5 sm:my-3 text-xs leading-relaxed">
-              Define criteria for automated alarm dispatch to bedside telemetry pagers and ward monitor displays.
-            </p>
-
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="font-label-mono-sm uppercase text-[#121c1b] font-bold text-[10px] sm:text-xs">
-                  Critical Peak Pressure (mmHg)
-                </label>
-                <div className="flex items-center gap-2.5 sm:gap-3">
-                  <input
-                    type="number"
-                    value={critVal}
-                    onChange={(e) => setCritVal(Number(e.target.value))}
-                    className="bg-[#ebf6f4] px-2.5 sm:px-3 py-1.5 font-label-mono-md text-[#121c1b] w-24 sm:w-28 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-bold text-xs sm:text-sm"
-                  />
-                  <span className="font-body-sm text-[#3f4947] text-[10px] sm:text-xs">
-                    Default: 65 mmHg (Urgent Red Banner)
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="font-label-mono-sm uppercase text-[#121c1b] font-bold text-[10px] sm:text-xs">
-                  Max Sustained Dwell Time (Minutes)
-                </label>
-                <div className="flex items-center gap-2.5 sm:gap-3">
-                  <input
-                    type="number"
-                    value={dwellVal}
-                    onChange={(e) => setDwellVal(Number(e.target.value))}
-                    className="bg-[#ebf6f4] px-2.5 sm:px-3 py-1.5 font-label-mono-md text-[#121c1b] w-24 sm:w-28 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-bold text-xs sm:text-sm"
-                  />
-                  <span className="font-body-sm text-[#3f4947] text-[10px] sm:text-xs">
-                    Default: 60 min (Stage II threshold)
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="font-label-mono-sm uppercase text-[#121c1b] font-bold text-[10px] sm:text-xs">
-                  Warning Level Pressure (mmHg)
-                </label>
-                <div className="flex items-center gap-2.5 sm:gap-3">
-                  <input
-                    type="number"
-                    value={warnVal}
-                    onChange={(e) => setWarnVal(Number(e.target.value))}
-                    className="bg-[#ebf6f4] px-2.5 sm:px-3 py-1.5 font-label-mono-md text-[#121c1b] w-24 sm:w-28 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-bold text-xs sm:text-sm"
-                  />
-                  <span className="font-body-sm text-[#3f4947] text-[10px] sm:text-xs">
-                    Default: 45 mmHg (Yellow Advisory)
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
+          <fieldset className="mb-3 bg-white border-[2px] border-[#121c1b] p-2.5">
+            <legend className="font-label-mono-sm uppercase font-bold text-[10px] px-1">Skin checks {enforce ? '(required)' : '(optional)'}</legend>
+            {SKIN_CHECKS.map((c, i) => (
+              <label key={c} className="flex items-center gap-2 py-1 text-xs cursor-pointer">
                 <input
-                  checked={autoPage}
-                  onChange={(e) => setAutoPage(e.target.checked)}
-                  className="w-4 h-4 sm:w-5 sm:h-5 accent-[#1d635d] cursor-pointer"
-                  id="auto-page-check"
                   type="checkbox"
+                  checked={checks[i]}
+                  onChange={(e) => setChecks((prev) => prev.map((v, j) => (j === i ? e.target.checked : v)))}
+                  className="w-4 h-4 accent-[#1d635d]"
                 />
-                <label
-                  className="font-body-sm text-[#121c1b] select-none cursor-pointer font-medium text-xs leading-snug"
-                  htmlFor="auto-page-check"
-                >
-                  Auto-dispatch pager alerts to charge nurse on secondary breach
-                </label>
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-col-reverse xs:flex-row justify-end gap-2 sm:gap-3 pt-3 border-t-[2px] border-[#121c1b]">
-              <button
-                onClick={onCloseThreshold}
-                className="bg-[#ebf6f4] text-[#121c1b] px-4 py-2 font-label-mono-md uppercase border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] neo-btn text-xs sm:text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  onSaveThreshold(critVal, dwellVal, warnVal, autoPage);
-                  onCloseThreshold();
-                }}
-                className="bg-[#1d635d] text-white px-4 sm:px-5 py-2 font-label-mono-md uppercase border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] sm:shadow-[4px_4px_0px_#121c1b] neo-btn font-bold text-xs sm:text-sm"
-              >
-                Save Clinical Parameters
-              </button>
-            </div>
+                {c}
+              </label>
+            ))}
+          </fieldset>
+          <label className="block mb-4">
+            <span className="font-label-mono-sm uppercase font-bold text-[10px] block mb-1">Note (optional)</span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={500}
+              placeholder="e.g. skin intact, wedge in place"
+              className="w-full bg-white border-[2px] border-[#121c1b] p-2 text-xs"
+            />
+          </label>
+          <div className="flex flex-col-reverse xs:flex-row gap-2">
+            <Button onClick={onCloseTurnModal}>Cancel</Button>
+            <Button
+              tone="teal"
+              className="flex-1"
+              disabled={turnBlocked}
+              title={turnBlocked ? 'Complete every skin check first' : undefined}
+              onClick={() => {
+                onConfirmTurn(turnModalBed.id, posture, note || undefined, checks);
+                onCloseTurnModal();
+              }}
+            >
+              Save turn
+            </Button>
           </div>
-        </div>
+        </Dialog>
       )}
 
-      {/* Protocol Edit Modal */}
+      {isThresholdOpen && (
+        <Dialog title="Alert limits and pressure scale" onClose={onCloseThreshold}>
+          <p className="text-[11px] text-[#3f4947] mb-3">All values are placeholders until the mat is calibrated and clinical staff set the limits.</p>
+          <div className="flex flex-col gap-3">
+            <NumberField label="Alert: any cell at or above (mmHg)" value={th.criticalMmHg} onChange={(v) => setTh({ ...th, criticalMmHg: v })} />
+            <NumberField label="Warning level (mmHg)" value={th.warnMmHg} onChange={(v) => setTh({ ...th, warnMmHg: v })} hint={thOk ? undefined : 'must be below the alert level'} />
+            <NumberField label="Max dwell (minutes)" value={th.maxDwellMin} onChange={(v) => setTh({ ...th, maxDwellMin: v })} />
+            <div className="border-t-[2px] border-[#121c1b] pt-3">
+              <span className="font-label-mono-sm uppercase font-bold text-[10px] block mb-2">Heatmap bands (used by the map, legend and sensor map)</span>
+              <div className="grid grid-cols-3 gap-2">
+                {(['Light from', 'Heavy from', 'Hot spot from'] as const).map((lbl, i) => (
+                  <NumberField key={lbl} label={lbl} value={scale[i]} onChange={(v) => setScale((s) => s.map((x, j) => (j === i ? v : x)) as [number, number, number])} />
+                ))}
+              </div>
+              {!scaleOk && <div className="text-[10px] text-[#8b2635] font-bold mt-1">Bands must increase: light &lt; heavy &lt; hot spot.</div>}
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={th.autoPage} onChange={(e) => setTh({ ...th, autoPage: e.target.checked })} className="w-4 h-4 accent-[#1d635d]" />
+              Page the charge nurse (stored only: paging is not built yet)
+            </label>
+          </div>
+          <div className="mt-4 pt-3 border-t-[2px] border-[#121c1b] flex flex-col-reverse xs:flex-row justify-end gap-2">
+            <Button onClick={onCloseThreshold}>Cancel</Button>
+            <Button
+              tone="teal"
+              disabled={!scaleOk || !thOk}
+              onClick={() => {
+                onSaveThreshold(th, scale);
+                onCloseThreshold();
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </Dialog>
+      )}
+
       {isProtocolOpen && (
-        <div className="fixed inset-0 bg-[#121c1b]/60 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-[#ffffff] text-[#121c1b] max-w-md w-full p-4 sm:p-6 border-[3px] sm:border-[4px] border-[#121c1b] shadow-[6px_6px_0px_#121c1b] sm:shadow-[8px_8px_0px_#121c1b] select-none max-h-[92vh] overflow-y-auto animate-in fade-in">
-            <div className="flex items-center justify-between pb-2.5 sm:pb-3 border-b-[3px] border-[#121c1b] mb-3 sm:mb-4">
-              <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 bg-[#1d635d]"></span>
-                <h3 className="font-headline-sm uppercase font-bold text-xs sm:text-sm">
-                  Clinical Protocol Editor
-                </h3>
-              </div>
+        <Dialog title="Turn cadence" onClose={onCloseProtocol}>
+          <p className="text-xs mb-3">How often patients are turned. The next due time of every bed follows from its last turn.</p>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {[60, 90, 120, 150, 180, 240].map((m) => (
               <button
-                onClick={onCloseProtocol}
-                className="p-1 border-[2px] border-[#121c1b] hover:bg-[#ebf6f4] neo-btn"
+                key={m}
+                onClick={() => setCadence(m)}
+                aria-pressed={cadence === m}
+                className={`p-2.5 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-md uppercase font-bold text-xs ${cadence === m ? 'bg-[#1d635d] text-white' : 'bg-white hover:bg-[#ebf6f4]'}`}
               >
-                <span className="material-symbols-outlined text-[18px] sm:text-[20px]">close</span>
+                {m} min ({m / 60}h)
               </button>
-            </div>
-
-            <p className="font-body-sm text-[#3f4947] mb-3 text-xs">
-              Adjust standard ward repositioning cadence according to physician orders:
-            </p>
-
-            <div className="flex flex-col gap-2 sm:gap-3 mb-4 sm:mb-5">
-              {[60, 90, 120, 150].map((mins) => (
-                <button
-                  key={mins}
-                  onClick={() => setProtocolCadence(mins)}
-                  className={`p-2.5 sm:p-3 border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-md uppercase font-bold text-left flex justify-between items-center transition-all text-xs sm:text-sm ${
-                    protocolCadence === mins
-                      ? 'bg-[#1d635d] text-white'
-                      : 'bg-[#ebf6f4] text-[#121c1b] hover:bg-[#dfeae8]'
-                  }`}
-                >
-                  <span>{mins} MIN ({mins / 60}H)</span>
-                  {protocolCadence === mins && (
-                    <span className="material-symbols-outlined text-[18px] sm:text-[20px]">check</span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col-reverse xs:flex-row justify-end gap-2 sm:gap-3 pt-3 border-t-[2px] border-[#121c1b]">
-              <button
-                onClick={onCloseProtocol}
-                className="px-4 py-2 bg-[#ffffff] border-[2px] border-[#121c1b] font-label-mono-md uppercase neo-btn font-bold text-xs sm:text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  onSaveProtocol(protocolCadence);
-                  onCloseProtocol();
-                }}
-                className="px-5 py-2 bg-[#1d635d] text-white border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] font-label-mono-md uppercase neo-btn font-bold text-xs sm:text-sm"
-              >
-                Save Protocol
-              </button>
-            </div>
+            ))}
           </div>
-        </div>
+          <div className="pt-3 border-t-[2px] border-[#121c1b] flex flex-col-reverse xs:flex-row justify-end gap-2">
+            <Button onClick={onCloseProtocol}>Cancel</Button>
+            <Button
+              tone="teal"
+              onClick={() => {
+                onSaveProtocol(cadence);
+                onCloseProtocol();
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </Dialog>
       )}
 
-      {/* Inspect Bed Detail Modal */}
       {inspectBed && (
-        <div className="fixed inset-0 bg-[#121c1b]/60 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-[#ffffff] text-[#121c1b] max-w-lg w-full p-4 sm:p-6 border-[3px] sm:border-[4px] border-[#121c1b] shadow-[6px_6px_0px_#121c1b] sm:shadow-[8px_8px_0px_#121c1b] select-none max-h-[92vh] overflow-y-auto animate-in fade-in">
-            <div className="flex items-center justify-between pb-2.5 sm:pb-3 border-b-[3px] border-[#121c1b] mb-3 sm:mb-4">
-              <div>
-                <span className="font-label-mono-sm text-[#3f4947] uppercase font-bold text-[10px] sm:text-xs">
-                  {inspectBed.bedNumber} // {inspectBed.pod}
-                </span>
-                <h3 className="font-headline-md uppercase font-bold text-sm sm:text-base mt-0.5">
-                  {inspectBed.patientName}
-                </h3>
+        <Dialog title={`${inspectBed.bedNumber} · ${inspectBed.pod}`} onClose={onCloseInspect}>
+          <h4 className="font-bold uppercase text-base mb-3">{inspectBed.patientName}</h4>
+          <dl className="grid grid-cols-2 gap-2 mb-3 font-label-mono-sm text-xs">
+            {[
+              ['Patient ID', inspectBed.patientId],
+              ['Braden', `${inspectBed.bradenScore} (${inspectBed.bradenRisk})`],
+              ['Position', inspectBed.posture],
+              ['Peak', `${inspectBed.peakPressure} mmHg`],
+              ['Status', inspectBed.statusLabel],
+              ['Next turn', inspectBed.countdown],
+              ['Last turn', inspectBed.lastTurnTime],
+              ['RN', inspectBed.assignedRn || '—'],
+            ].map(([k, v]) => (
+              <div key={k} className="bg-white border-[2px] border-[#121c1b] p-2 min-w-0">
+                <dt className="text-[9px] text-[#3f4947] uppercase">{k}</dt>
+                <dd className="font-bold truncate">{v}</dd>
               </div>
-              <button
-                onClick={onCloseInspect}
-                className="p-1 border-[2px] border-[#121c1b] hover:bg-[#ebf6f4] neo-btn"
-              >
-                <span className="material-symbols-outlined text-[18px] sm:text-[20px]">close</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-3 sm:mb-4 font-label-mono-sm text-xs">
-              <div className="bg-[#ebf6f4] p-2 sm:p-2.5 border-[2px] border-[#121c1b]">
-                <span className="text-[#3f4947] block text-[9px] sm:text-[10px]">BRADEN SCORE</span>
-                <span className="font-headline-sm font-bold text-[#121c1b] text-xs sm:text-sm">
-                  {inspectBed.bradenScore} ({inspectBed.bradenRisk})
-                </span>
-              </div>
-              <div className="bg-[#ebf6f4] p-2 sm:p-2.5 border-[2px] border-[#121c1b]">
-                <span className="text-[#3f4947] block text-[9px] sm:text-[10px]">CURRENT POSTURE</span>
-                <span className="font-headline-sm font-bold text-[#1d635d] text-xs sm:text-sm truncate block">
-                  {inspectBed.posture}
-                </span>
-              </div>
-              <div className="bg-[#ebf6f4] p-2 sm:p-2.5 border-[2px] border-[#121c1b]">
-                <span className="text-[#3f4947] block text-[9px] sm:text-[10px]">PEAK PRESSURE</span>
-                <span className="font-headline-sm font-bold text-[#8b2635] text-xs sm:text-sm">
-                  {inspectBed.peakPressure} mmHg
-                </span>
-              </div>
-              <div className="bg-[#ebf6f4] p-2 sm:p-2.5 border-[2px] border-[#121c1b]">
-                <span className="text-[#3f4947] block text-[9px] sm:text-[10px]">ATTENDING RN</span>
-                <span className="font-headline-sm font-bold text-[#121c1b] text-xs sm:text-sm truncate block">
-                  {inspectBed.assignedRn}
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-[#EDE8DC] p-2.5 sm:p-3 border-[2px] border-[#121c1b] mb-3 sm:mb-4">
-              <div className="font-label-mono-sm uppercase text-[#3f4947] font-bold mb-1 text-[10px] sm:text-xs">
-                CLINICAL REPOSITIONING DIRECTIVE
-              </div>
-              <p className="font-body-sm text-[#121c1b] text-xs leading-snug">
-                Patient is scheduled for Q2H rotational offload. Use standard high-density foam wedge and confirm floating heels clear of mattress surface.
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={onCloseInspect}
-                className="w-full sm:w-auto px-5 py-2.5 bg-[#1d635d] text-white border-[2px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] font-label-mono-md uppercase neo-btn font-bold text-xs sm:text-sm"
-              >
-                Close Inspector
-              </button>
-            </div>
+            ))}
+          </dl>
+          <p className="text-[11px] text-[#3f4947] mb-3">Turn every {settings.protocol.cadenceMin} min (ward setting).</p>
+          <div className="flex flex-col-reverse xs:flex-row justify-end gap-2">
+            <Button onClick={onCloseInspect}>Close</Button>
+            <Button tone="teal" onClick={() => onMonitorBed(inspectBed.id)}>
+              Monitor this bed
+            </Button>
           </div>
-        </div>
+        </Dialog>
       )}
     </>
   );

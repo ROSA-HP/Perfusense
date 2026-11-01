@@ -1,203 +1,214 @@
 import React, { useState } from 'react';
-import { AuditLogItem, ZoneTimer } from '../types';
+import { AuditLogItem, PatientBed, ZoneTimer } from '../types';
+import type { Settings } from '../api/client';
+import { Button, Card, Chip, EmptyState, PageHeader, SampleBadge } from '../components/ui';
+import { TimerBar } from './LiveHeatmapView';
 
 interface PeakAlertsViewProps {
-  auditLogs: AuditLogItem[];
+  bed: PatientBed;
+  timers: ZoneTimer[];
+  auditLogs: (AuditLogItem & { acknowledgedAt?: string | null; acknowledgedBy?: string })[];
+  settings: Settings;
+  connected: boolean;
   onOpenThresholds: () => void;
-  showToast: (title: string, desc?: string) => void;
-  liveTimers?: ZoneTimer[];
-  onResetZone?: (zoneName: string) => void;
-  onResetAll?: () => void;
-  isApiConnected?: boolean;
+  onOpenProtocol: () => void;
+  onResetZone: (zoneName: string) => void;
+  onResetAll: () => void;
+  onAlertAction: (id: string, action: 'acknowledge' | 'resolve') => void;
+}
+
+const ratio = (t: ZoneTimer) => t.elapsedMin / (t.limitMin || 1);
+const level = (t?: ZoneTimer) => (!t ? 'none' : t.elapsedMin >= t.limitMin ? 'over' : t.isNearLimit ? 'near' : t.isElevated ? 'elevated' : 'ok');
+const FILL: Record<string, string> = { none: '#ffffff', ok: '#a3cfc9', elevated: '#d97757', near: '#8b2635', over: '#4a1028' };
+const LABEL: Record<string, string> = { none: 'NO DATA', ok: 'OK', elevated: 'ELEVATED', near: 'NEAR LIMIT', over: 'OVER LIMIT' };
+
+// Body seen from above, head at the top (same orientation as the heatmap).
+const BODY_ZONES: { name: string; shapes: { cx: number; cy: number; rx: number; ry: number }[] }[] = [
+  { name: 'ELBOWS & OCCIPUT', shapes: [{ cx: 100, cy: 26, rx: 16, ry: 12 }, { cx: 44, cy: 128, rx: 10, ry: 10 }, { cx: 156, cy: 128, rx: 10, ry: 10 }] },
+  { name: 'SHOULDERS (SCAPULAE)', shapes: [{ cx: 74, cy: 82, rx: 20, ry: 13 }, { cx: 126, cy: 82, rx: 20, ry: 13 }] },
+  { name: 'LEFT TROCHANTER (HIP)', shapes: [{ cx: 66, cy: 178, rx: 13, ry: 16 }] },
+  { name: 'RIGHT TROCHANTER (HIP)', shapes: [{ cx: 134, cy: 178, rx: 13, ry: 16 }] },
+  { name: 'SACRUM & COCCYX', shapes: [{ cx: 100, cy: 182, rx: 18, ry: 16 }] },
+  { name: 'HEELS (CALCANEUS)', shapes: [{ cx: 84, cy: 322, rx: 9, ry: 10 }, { cx: 116, cy: 322, rx: 9, ry: 10 }] },
+];
+
+function BodyMap({ timers, focus, onFocus }: { timers: ZoneTimer[]; focus: string | null; onFocus: (n: string) => void }) {
+  return (
+    <svg viewBox="0 0 200 345" className="w-full max-w-[220px] mx-auto" role="img" aria-label="Body map coloured by zone timer status">
+      {/* silhouette */}
+      <g fill="#ebf6f4" stroke="#121c1b" strokeWidth="2.5">
+        <ellipse cx="100" cy="28" rx="20" ry="22" />
+        <rect x="60" y="56" width="80" height="140" rx="22" />
+        <rect x="34" y="66" width="20" height="96" rx="10" />
+        <rect x="146" y="66" width="20" height="96" rx="10" />
+        <rect x="68" y="188" width="28" height="140" rx="12" />
+        <rect x="104" y="188" width="28" height="140" rx="12" />
+      </g>
+      {BODY_ZONES.map((z) => {
+        const t = timers.find((x) => x.name === z.name);
+        const lv = level(t);
+        return (
+          <g key={z.name} onClick={() => onFocus(z.name)} className="cursor-pointer" aria-label={`${z.name}: ${LABEL[lv]}`}>
+            {z.shapes.map((s, i) => (
+              <ellipse
+                key={i}
+                {...s}
+                fill={FILL[lv]}
+                stroke="#121c1b"
+                strokeWidth={focus === z.name ? 4 : 2}
+                className={lv === 'near' || lv === 'over' ? 'animate-pulse' : ''}
+              />
+            ))}
+          </g>
+        );
+      })}
+    </svg>
+  );
 }
 
 export const PeakAlertsView: React.FC<PeakAlertsViewProps> = ({
+  bed,
+  timers,
+  auditLogs,
+  settings,
+  connected,
   onOpenThresholds,
-  showToast,
-  liveTimers,
+  onOpenProtocol,
   onResetZone,
   onResetAll,
-  isApiConnected = false,
+  onAlertAction,
 }) => {
-  const defaultTimers: ZoneTimer[] = [
-    { name: 'SACRUM & COCCYX', elapsedMin: 112, limitMin: 120, isNearLimit: true },
-    { name: 'HEELS (CALCANEUS)', elapsedMin: 42, limitMin: 90 },
-    { name: 'LEFT TROCHANTER (HIP)', elapsedMin: 78, limitMin: 120, isElevated: true },
-    { name: 'SHOULDERS (SCAPULAE)', elapsedMin: 35, limitMin: 120 },
-    { name: 'RIGHT TROCHANTER (HIP)', elapsedMin: 10, limitMin: 120 },
-    { name: 'ELBOWS & OCCIPUT', elapsedMin: 18, limitMin: 120 },
-  ];
+  const [focus, setFocus] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null); // zone name, or 'ALL'
+  const [showResolved, setShowResolved] = useState(false);
 
-  const [localTimers, setLocalTimers] = useState<ZoneTimer[]>(defaultTimers);
-  const timers = (liveTimers && liveTimers.length > 0) ? liveTimers : localTimers;
+  const sorted = [...timers].sort((a, b) => ratio(b) - ratio(a));
+  const active = auditLogs.filter((l) => l.status === 'ACTIVE');
+  const resolved = auditLogs.filter((l) => l.status === 'RESOLVED').slice(0, 15);
+  const t = settings.telemetry;
 
-  const handleResetZone = (zoneName: string) => {
-    if (onResetZone) {
-      onResetZone(zoneName);
-    } else {
-      setLocalTimers((prev) =>
-        prev.map((t) => (t.name === zoneName ? { ...t, elapsedMin: 0, isNearLimit: false, isElevated: false } : t))
-      );
-      showToast(`ZONE OFFLOADED: ${zoneName}`, `Timer reset to 0m. Bedside reposition verified.`);
-    }
-  };
-
-  const handleResetAll = () => {
-    if (onResetAll) {
-      onResetAll();
-    } else {
-      setLocalTimers((prev) =>
-        prev.map((t) => ({ ...t, elapsedMin: 0, isNearLimit: false, isElevated: false }))
-      );
-      showToast('ALL ZONES RE-ZEROED', 'Full patient posture re-zeroed and logged to clinical flowsheet.');
-    }
+  const reset = (name: string) => {
+    if (confirm !== name) return setConfirm(name);
+    setConfirm(null);
+    name === 'ALL' ? onResetAll() : onResetZone(name);
   };
 
   return (
-    <div className="flex flex-col gap-3.5 sm:gap-4 select-none w-full max-w-[1400px] mx-auto">
-      {/* Top Header & Clinical Policy Strip */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#EDE8DC] p-3 sm:p-4 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b]">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 bg-[#1d635d]"></span>
-            <h1 className="font-headline-lg text-[#121c1b] uppercase tracking-tight font-bold text-sm sm:text-lg">
-              ANATOMICAL ZONE TIMERS
-            </h1>
+    <div className="flex flex-col gap-3.5 sm:gap-4 w-full">
+      <PageHeader title="Zones & alerts" subtitle={`${bed.bedNumber} · ${bed.patientName} · Braden ${bed.bradenScore} (${bed.bradenRisk})`}>
+        {!connected && <SampleBadge />}
+        <Button onClick={onOpenProtocol} title="How often patients are turned">
+          Cadence: {settings.protocol.cadenceMin} min
+        </Button>
+        <Button onClick={onOpenThresholds}>Alert limits</Button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4 items-start">
+        {/* Body map + legend */}
+        <Card className="lg:col-span-4 flex flex-col gap-3">
+          <h2 className="font-bold uppercase text-sm pb-2 border-b-[2px] border-[#121c1b]">Body map</h2>
+          <BodyMap timers={timers} focus={focus} onFocus={setFocus} />
+          <div className="grid grid-cols-2 gap-1 font-label-mono-sm text-[10px]">
+            {(['ok', 'elevated', 'near', 'over'] as const).map((k) => (
+              <span key={k} className="inline-flex items-center gap-1">
+                <span className="w-3 h-3 border-[2px] border-[#121c1b]" style={{ background: FILL[k] }} />
+                {LABEL[k]}
+              </span>
+            ))}
           </div>
-          <p className="font-body-sm text-[#3f4947] text-[11px] sm:text-xs mt-0.5">
-            BED 07 // Real-time continuous tissue dwell monitoring across 6 critical pressure loci.
+          <p className="text-[10px] text-[#3f4947] leading-snug">
+            A timer counts while the highest cell in that area is at or above {t.loadedMmHg} mmHg, and counts down {t.recoveryFactor}× faster while it is relieved.
+            “Elevated” starts at {Math.round(t.elevatedRatio * 100)}% of the limit, “near limit” at {Math.round(t.nearLimitRatio * 100)}%. All values are placeholders.
           </p>
-        </div>
+        </Card>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          <span className="bg-[#ffffff] text-[#121c1b] font-label-mono-sm px-2 py-1 border-[2px] border-[#121c1b] uppercase text-[9px] sm:text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
-            WARD: 2.0H CADENCE
-          </span>
-          <span className="bg-[#1d635d] text-white font-label-mono-sm px-2 py-1 border-[2px] border-[#121c1b] uppercase text-[9px] sm:text-[10px] font-bold shadow-[1px_1px_0px_#121c1b]">
-            BRADEN: 12 (HIGH)
-          </span>
-          <button
-            onClick={onOpenThresholds}
-            className="bg-[#ffffff] hover:bg-[#dfeae8] text-[#121c1b] font-label-mono-sm px-2.5 sm:px-3 py-1 border-[2px] border-[#121c1b] uppercase text-[9px] sm:text-[10px] font-bold shadow-[2px_2px_0px_#121c1b] neo-btn flex items-center gap-1 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[14px]">tune</span>
-            <span>LIMITS</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main 6 Anatomical Zone Dwell Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-        {timers.map((t) => {
-          const pct = Math.min(100, Math.round((t.elapsedMin / t.limitMin) * 100));
-          const remainingMin = Math.max(0, t.limitMin - t.elapsedMin);
-          const isCritical = t.isNearLimit || pct >= 90;
-          const isWarning = t.isElevated || (pct >= 60 && pct < 90);
-
-          let barColor = 'bg-[#1d635d]';
-          let borderStyle = 'border-[#121c1b]';
-          let statusLabel = 'NOMINAL';
-          let badgeBg = 'bg-[#a3cfc9] text-[#121c1b]';
-
-          if (isCritical) {
-            barColor = 'bg-[#8b2635]';
-            borderStyle = 'border-[#8b2635]';
-            statusLabel = 'DUE NOW';
-            badgeBg = 'bg-[#8b2635] text-white animate-pulse';
-          } else if (isWarning) {
-            barColor = 'bg-[#d97757]';
-            borderStyle = 'border-[#d97757]';
-            statusLabel = 'ELEVATED';
-            badgeBg = 'bg-[#d97757] text-white';
-          }
-
-          return (
-            <div
-              key={t.name}
-              className={`bg-[#ffffff] border-[3px] ${borderStyle} p-3 sm:p-4 shadow-[3px_3px_0px_#121c1b] flex flex-col justify-between gap-2.5 sm:gap-3`}
-            >
-              <div>
-                {/* Zone Header */}
-                <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#121c1b]/30">
-                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                    <span className="material-symbols-outlined text-[#1d635d] text-[18px] sm:text-[20px] shrink-0">
-                      radio_button_checked
-                    </span>
-                    <span className="font-headline-sm font-bold text-xs sm:text-sm text-[#121c1b] truncate">
-                      {t.name}
-                    </span>
-                  </div>
-                  <span className={`font-label-mono-sm px-2 py-0.5 border border-[#121c1b] text-[9px] sm:text-[10px] font-bold shrink-0 ${badgeBg}`}>
-                    {statusLabel}
-                  </span>
-                </div>
-
-                {/* Dwell Metrics */}
-                <div className="flex items-baseline justify-between mt-2.5 sm:mt-3 mb-1">
-                  <div>
-                    <span className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase block">
-                      ELAPSED DWELL
-                    </span>
-                    <span className="font-headline-lg font-bold text-base sm:text-lg text-[#121c1b]">
-                      {t.elapsedMin}{' '}
-                      <span className="text-xs font-normal text-[#3f4947]">
-                        / {t.limitMin} MIN
-                      </span>
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-label-mono-sm text-[9px] sm:text-[10px] text-[#3f4947] uppercase block">
-                      REMAINING
-                    </span>
-                    <span className={`font-headline-lg font-bold text-base sm:text-lg ${isCritical ? 'text-[#8b2635]' : 'text-[#1d635d]'}`}>
-                      {remainingMin} MIN
-                    </span>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="w-full h-3 sm:h-3.5 bg-[#ebf6f4] border-[2px] border-[#121c1b] overflow-hidden p-0.5 mt-1">
-                  <div
-                    className={`h-full ${barColor} transition-all duration-500`}
-                    style={{ width: `${pct}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Card Footer Actions */}
-              <div className="flex items-center justify-between pt-2 border-t border-[#121c1b]/20">
-                <span className="font-label-mono-sm text-[10px] text-[#3f4947]">
-                  {pct}% Dwell Ratio
-                </span>
-                <button
-                  onClick={() => handleResetZone(t.name)}
-                  className="px-2.5 sm:px-3 py-1.5 bg-[#f1fcf9] hover:bg-[#adefe7] text-[#121c1b] border border-[#121c1b] shadow-[1px_1px_0px_#121c1b] font-label-mono-sm text-[10px] font-bold uppercase transition-all neo-btn cursor-pointer min-h-[34px] flex items-center justify-center"
-                >
-                  OFFLOAD (RESET)
-                </button>
-              </div>
+        {/* Timers */}
+        <div className="lg:col-span-8 flex flex-col gap-3">
+          {sorted.length === 0 ? (
+            <EmptyState title="No zone timers yet">They start with the first frame from this bed's mat.</EmptyState>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {sorted.map((z) => {
+                const lv = level(z);
+                const remaining = Math.max(0, z.limitMin - z.elapsedMin);
+                return (
+                  <Card
+                    key={z.name}
+                    className={`flex flex-col gap-2 transition-shadow ${focus === z.name ? '!shadow-[5px_5px_0px_#1d635d]' : ''} ${lv === 'near' || lv === 'over' ? '!border-[#8b2635]' : ''}`}
+                  >
+                    <button className="text-left" onClick={() => setFocus(z.name)}>
+                      <TimerBar t={z} />
+                    </button>
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#121c1b]/20">
+                      <span className="font-label-mono-sm text-[10px] text-[#3f4947]">{lv === 'over' ? `${z.elapsedMin - z.limitMin} min over` : `${remaining} min left`}</span>
+                      <Button tone={confirm === z.name ? 'carmine' : 'white'} onClick={() => reset(z.name)} className="!min-h-[34px] !py-1">
+                        {confirm === z.name ? 'Tap again to reset' : 'Area offloaded'}
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
-          );
-        })}
+          )}
+          {sorted.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-white border-[2px] border-[#121c1b] p-2.5">
+              <span className="text-[11px] text-[#3f4947]">Resetting a zone also sends “ack” to the mat, which clears its local alarm.</span>
+              <Button tone={confirm === 'ALL' ? 'carmine' : 'teal'} onClick={() => reset('ALL')}>
+                {confirm === 'ALL' ? 'Tap again: reset all' : `Reset all ${sorted.length} zones`}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Global Actions Footer */}
-      <div className="bg-[#ffffff] p-3 sm:p-3.5 border-[3px] border-[#121c1b] shadow-[3px_3px_0px_#121c1b] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-[#1d635d] shrink-0">info</span>
-          <span className="font-body-sm text-xs text-[#121c1b]">
-            Dwell timers tick automatically based on piezocapacitive contact load thresholds (&gt;15 mmHg).
-          </span>
-        </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={handleResetAll}
-            className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-[#1d635d] hover:bg-[#121c1b] text-white border-[2px] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] font-label-mono-sm text-xs font-bold uppercase transition-all neo-btn cursor-pointer text-center"
-          >
-            RESET ALL 6 ZONES
+      {/* Alerts */}
+      <Card className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b-[2px] border-[#121c1b]">
+          <h2 className="font-bold uppercase text-sm">Active alerts · whole ward ({active.length})</h2>
+          <button onClick={() => setShowResolved((v) => !v)} className="font-label-mono-sm text-[10px] font-bold underline">
+            {showResolved ? 'Hide resolved' : `Show resolved (${resolved.length})`}
           </button>
         </div>
-      </div>
+        {active.length === 0 ? (
+          <EmptyState title="No active alerts" />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {active.map((a) => (
+              <li key={a.id} className="border-[2px] border-[#8b2635] bg-[#fff5f3] p-2.5 flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+                <div className="min-w-0 font-label-mono-sm text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Chip tone="carmine">{a.zoneCategory}</Chip>
+                    <span className="font-bold">{a.bedUnit}</span>
+                    <span className="text-[#3f4947]">{a.timestamp}</span>
+                    {a.acknowledgedAt && <Chip tone="parchment">ACK · {a.acknowledgedBy}</Chip>}
+                  </div>
+                  <div className="mt-1 truncate">
+                    {a.zoneLocus} · peak {a.peakMmHg} mmHg · {a.dwellMin} min · {a.patientName}
+                  </div>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  {!a.acknowledgedAt && <Button onClick={() => onAlertAction(a.id, 'acknowledge')}>Acknowledge</Button>}
+                  <Button tone="teal" onClick={() => onAlertAction(a.id, 'resolve')}>
+                    Resolve
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {showResolved && (
+          <ul className="divide-y divide-[#121c1b]/20 mt-1">
+            {resolved.map((a) => (
+              <li key={a.id} className="py-1.5 font-label-mono-sm text-[11px] flex flex-wrap gap-2">
+                <span className="text-[#3f4947]">{a.timestamp}</span>
+                <span className="font-bold">{a.bedUnit}</span>
+                <span>{a.zoneLocus}</span>
+                <span className="text-[#3f4947] truncate">{a.actionTaken}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 };

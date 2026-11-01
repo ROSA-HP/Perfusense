@@ -3,7 +3,7 @@
 //
 //  This file only connects the pieces. Each piece has its own tab:
 //    config.h       all settings and pins
-//    Scanner        reads the 8x8 mat
+//    Scanner        reads the 10x10 mat
 //    Processing     baseline, smoothing, zones, pressure x time, alarm  (what the ESP32 DOES)
 //    Connection     Wi-Fi and server reachability                        (the LINK)
 //    Comms          sending frames, receiving commands                   (the CONVERSATION)
@@ -21,7 +21,6 @@ static Processing proc;
 static uint16_t mv[MAT_CELLS];       // raw millivolts of the latest scan
 static uint8_t  frame[MAT_CELLS];    // what we send to the server
 static uint32_t lastFrameMs = 0;
-static uint32_t lastAckPressMs = 0;
 
 // Learn the empty-mat baseline. The mat MUST be empty while this runs (about 1 second).
 static void learnBaseline() {
@@ -32,6 +31,9 @@ static void learnBaseline() {
     delay(10);
   }
   proc.baselineEnd();
+  // The time spent learning is not load time: start the next scan interval from now,
+  // otherwise the next update() would add these seconds to every loaded zone.
+  lastFrameMs = millis();
 }
 
 // Blink the LED and buzzer once per second while any zone is over its limit.
@@ -43,11 +45,24 @@ static void driveAlarm() {
 }
 
 // The caregiver turned the patient and pressed the button.
+// Acts once per press: the button must read "pressed" for BUTTON_DEBOUNCE_MS (contact bounce
+// is ignored), and holding it down does not keep clearing alarms.
 static void handleButton() {
-  if (digitalRead(ACK_PIN) == LOW && millis() - lastAckPressMs > 300) {
-    lastAckPressMs = millis();
-    proc.acknowledge();
-    Serial.println("Button: alarms cleared");
+  static bool stablePressed = false;
+  static bool lastRaw = false;
+  static uint32_t changedMs = 0;
+  const bool raw = (digitalRead(ACK_PIN) == LOW);
+  const uint32_t now = millis();
+  if (raw != lastRaw) {
+    lastRaw = raw;
+    changedMs = now;
+  }
+  if (raw != stablePressed && now - changedMs >= BUTTON_DEBOUNCE_MS) {
+    stablePressed = raw;
+    if (stablePressed) {
+      proc.acknowledge();
+      Serial.println("Button: alarms cleared");
+    }
   }
 }
 
@@ -58,7 +73,7 @@ void setup() {
 
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(ACK_PIN, INPUT_PULLUP);
+  pinMode(ACK_PIN, ACK_INTERNAL_PULLUP ? INPUT_PULLUP : INPUT);  // GPIO 35: external pull-up
   scannerBegin();
 
   connectionBegin();
@@ -73,7 +88,6 @@ void setup() {
   delay(2000);
   learnBaseline();
   Serial.println("Baseline done. Running.");
-  lastFrameMs = millis();
 }
 
 void loop() {
@@ -99,9 +113,14 @@ void loop() {
 
   scannerReadFrame(mv);             // 1. read the mat
   proc.update(mv, dtS);             // 2. process it
-  const uint16_t newAlerts = proc.takeNewAlerts();
+  const uint32_t newAlerts = proc.takeNewAlerts();
   if (newAlerts) {
-    Serial.printf("ALERT: zone mask 0x%04X reached the time limit\n", newAlerts);
+    for (uint8_t z = 0; z < ZONES; z++) {
+      if (newAlerts & ((uint32_t)1u << z)) {
+        Serial.printf("ALERT: zone %u (row %u, col %u) reached the time limit\n",
+                      (unsigned)z, (unsigned)(z / ZONES_PER_SIDE), (unsigned)(z % ZONES_PER_SIDE));
+      }
+    }
   }
   proc.frameBytes(frame);           // 3. hand it to the network task
   commsPublishFrame(frame);
@@ -115,7 +134,7 @@ void loop() {
                   (unsigned)s.sent, (unsigned)s.failed, s.lastCode, wifiSignalDbm());
     for (uint8_t r = 0; r < MAT_N; r++) {
       for (uint8_t c = 0; c < MAT_N; c++) {
-        Serial.print((int)proc.cellSignal(r * MAT_N + c));
+        Serial.print((int)proc.cellSignal((uint16_t)r * MAT_N + c));
         Serial.print(c < MAT_N - 1 ? "," : "\n");
       }
     }

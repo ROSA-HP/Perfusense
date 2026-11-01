@@ -57,21 +57,23 @@ Each frame, every zone with cells counts up while its highest cell is at or abov
 ```
 POST /api/telemetry/bed-07/frame
 x-device-key: <DEVICE_KEY from .env>
-Content-Type: application/octet-stream        body: exactly 64 bytes (row-major, 0..255)
+Content-Type: application/octet-stream        body: exactly 100 bytes (row-major, 0..255)
 ```
-or `Content-Type: application/json` with `{ "cells": [64 numbers], "ts": "optional ISO time" }`.
+or `Content-Type: application/json` with `{ "cells": [100 numbers], "ts": "optional ISO time" }`.
+
+The frame must have one value per mat cell (100 for the 10x10 mat). Any other size is refused with `422`, so the current 8x8 firmware (64 bytes) is refused until it is updated to 10x10.
 
 ESP32 sketch fragment:
 
 ```cpp
 #include <HTTPClient.h>
 
-void postFrame(const uint8_t* frame64) {          // the same 64 bytes the firmware builds in publishFrame()
+void postFrame(const uint8_t* frame100) {         // one byte per cell, row-major
   HTTPClient http;
   http.begin("http://192.168.1.10:4000/api/telemetry/bed-07/frame");
   http.addHeader("Content-Type", "application/octet-stream");
   http.addHeader("x-device-key", "change-me-device-key");
-  int code = http.POST((uint8_t*)frame64, 64);    // 202 = accepted
+  int code = http.POST((uint8_t*)frame100, 100);  // 202 = accepted
   http.end();
 }
 ```

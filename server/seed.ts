@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { pathToFileURL } from 'node:url';
 import { config } from './config';
 import { INITIAL_AUDIT_LOGS, INITIAL_BEDS, INITIAL_PIEZO_CELLS } from '../src/data/mockData';
-import { AuditLog, Bed, BedEvent, Broadcast, HardwareLog, MatState, SettingModel } from './models';
+import { AuditLog, Bed, BedEvent, Broadcast, HardwareLog, MatState, PressureSample, SettingModel } from './models';
 import { DEFAULT_SETTINGS } from './lib/settings';
 
 // Minutes from "now" until each mock bed's next turn is due. Chosen so the derived statuses
@@ -70,6 +70,7 @@ export async function seedDatabase({ reset = true } = {}) {
       HardwareLog.deleteMany({}),
       Broadcast.deleteMany({}),
       SettingModel.deleteMany({}),
+      PressureSample.deleteMany({}),
     ]);
   }
   const cadence = DEFAULT_SETTINGS.protocol.cadenceMin;

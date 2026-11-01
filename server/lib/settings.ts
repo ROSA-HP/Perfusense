@@ -73,15 +73,18 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   telemetry: {
     mmHgPerByte: 0.4, // PLACEHOLDER
-    levelMmHg: [10, 25, 40], // PLACEHOLDER: pressure where heatmap level 1 (light), 2 (heavy), 3 (hot spot) start
+    // PLACEHOLDER: pressure where heatmap level 1 (light), 2 (heavy), 3 (hot spot) start.
+    // This is the ONE pressure scale: the UI legend, heatmap colours and sensor map read it from
+    // GET /api/settings, so change it here (or with PUT /api/settings), never in the UI.
+    levelMmHg: [15, 32, 55],
     loadedMmHg: 20, // PLACEHOLDER: a zone at or above this counts as loaded
     recoveryFactor: 2, // unloaded time removes this many times its length from a zone timer
     nearLimitRatio: 0.85,
     elevatedRatio: 0.6,
     elevatedMmHg: 30,
     staleSec: 30, // mat data older than this is treated as offline
-    cellWarnMmHg: 30, // sensor-map colour bands: above this a cell is "warn" (UI legend 31-50)
-    cellCriticalMmHg: 50, // above this a cell is "critical"
+    cellWarnMmHg: 32, // sensor-map bands: at or above this a cell is "warn" (same as heatmap "heavy")
+    cellCriticalMmHg: 55, // at or above this a cell is "critical" (same as heatmap "hot spot")
   },
 };
 

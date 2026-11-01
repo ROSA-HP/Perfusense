@@ -30,6 +30,7 @@ void connectionLoop() {
   } else if (!now && wasConnected) {
     Serial.println("Wi-Fi lost. The scan and the local alarm keep working.");
     serverOk = false;
+    lastTryMs = millis();          // give auto-reconnect a full WIFI_RETRY_MS before restarting it
   }
   wasConnected = now;
   // Still not connected after a while: restart the connection attempt.

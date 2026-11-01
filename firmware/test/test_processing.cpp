@@ -9,7 +9,9 @@ static int failures = 0, checks = 0;
 #define CHECK(cond, msg) do { checks++; if (!(cond)) { failures++; printf("FAIL: %s  (line %d)\n", msg, __LINE__); } } while (0)
 
 static void fill(uint16_t* mv, uint16_t v) { for (int i = 0; i < MAT_CELLS; i++) mv[i] = v; }
-// press the 2x2 zone with index z (0..15) at value v
+// index of the top-left cell of zone z
+static int topLeft(int z) { return (z / ZONES_PER_SIDE) * ZONE_SIZE * MAT_N + (z % ZONES_PER_SIDE) * ZONE_SIZE; }
+// press the 2x2 zone with index z (0..ZONES-1) at value v
 static void pressZone(uint16_t* mv, int z, uint16_t v) {
   int zr = z / ZONES_PER_SIDE, zc = z % ZONES_PER_SIDE;
   for (int r = 0; r < ZONE_SIZE; r++) for (int c = 0; c < ZONE_SIZE; c++)
@@ -23,6 +25,12 @@ static void run(Processing& p, const uint16_t* mv, int frames, float dt) { for (
 
 int main() {
   uint16_t mv[MAT_CELLS];
+
+  { // mat shape: must match the server's 10 x 10 mat (it refuses other frame sizes)
+    CHECK(MAT_N == 10 && MAT_CELLS == 100, "10 x 10 mat = 100 cells");
+    CHECK(ZONES == 25, "2 x 2 zones on a 10 x 10 mat = 25 zones");
+    CHECK(topLeft(6) == 22, "zone 6 (row 1, col 1) starts at cell 22");
+  }
 
   { // baseline: average of the empty-mat readings, per cell
     Processing p; uint16_t a[MAT_CELLS], b[MAT_CELLS]; fill(a, 100); fill(b, 110);
@@ -44,7 +52,7 @@ int main() {
     Processing p; learn(p, 100);
     fill(mv, 100); pressZone(mv, 5, 700);                  // +600 mV on zone 5
     p.update(mv, 0.5f);
-    int cell = (1 * ZONE_SIZE) * MAT_N + 1 * ZONE_SIZE;    // top-left cell of zone 5 (row 2, col 2)
+    int cell = topLeft(5);    // top-left cell of zone 5 (cell row 2, col 0)
     CHECK(fabsf(p.cellSignal(cell) - 0.30f * 600) < 0.01f, "first scan moves 30% toward the target");
     run(p, mv, 40, 0.5f);
     CHECK(p.cellSignal(cell) > 595 && p.cellSignal(cell) <= 600, "signal converges to the pressed value");
@@ -63,17 +71,17 @@ int main() {
   { // a half-loaded zone below the threshold does not count as loaded
     Processing p; learn(p, 100);
     fill(mv, 100);
-    mv[(1 * ZONE_SIZE) * MAT_N + 1 * ZONE_SIZE] = 100 + 1000;   // one hot cell of four = mean 250 (< 300)
+    mv[topLeft(5)] = 100 + 1000;   // one hot cell of four = mean 250 (< 300)
     run(p, mv, 60, 0.5f);
     CHECK(p.exposure(5) == 0, "one cell alone does not make the zone loaded (mean below threshold)");
   }
   { // alert fires once at the limit, alarm stays on until acknowledged
     Processing p; learn(p, 100);
     fill(mv, 100); pressZone(mv, 5, 700);
-    uint16_t seen = 0; int alerts = 0;
+    uint32_t seen = 0; int alerts = 0;
     for (int i = 0; i < 400; i++) {                          // 200 s > 60 s limit
       p.update(mv, 0.5f);
-      uint16_t n = p.takeNewAlerts(); if (n) { seen |= n; alerts++; }
+      uint32_t n = p.takeNewAlerts(); if (n) { seen |= n; alerts++; }
     }
     CHECK(alerts == 1, "the alert is raised exactly once");
     CHECK(seen == (1u << 5), "the alert names zone 5");
@@ -83,6 +91,15 @@ int main() {
     CHECK(!p.alarmActive() && p.exposure(5) == 0, "acknowledge clears alarm and timers");
     run(p, mv, 10, 0.5f);
     CHECK(!p.alarmActive(), "still loaded but timer restarted: no instant re-alarm");
+  }
+  { // the last zone (24, bottom-right) alerts too: needs the 32-bit alert mask
+    Processing p; learn(p, 100);
+    fill(mv, 100); pressZone(mv, ZONES - 1, 700);
+    uint32_t seen = 0;
+    for (int i = 0; i < 400; i++) { p.update(mv, 0.5f); seen |= p.takeNewAlerts(); }
+    CHECK(seen == ((uint32_t)1u << (ZONES - 1)), "zone 24 is reported in the alert mask");
+    CHECK(p.zoneAlerted(ZONES - 1) && p.alarmActive(), "zone 24 raises the alarm");
+    CHECK(topLeft(ZONES - 1) == 88, "zone 24 starts at cell 88");
   }
   { // recovery: relief removes exposure faster than it was collected
     Processing p; learn(p, 100);
@@ -119,14 +136,14 @@ int main() {
     // a person on the mat: baseline must NOT follow
     Processing q; learn(q, 100);
     fill(mv, 100); pressZone(mv, 5, 700); run(q, mv, 400, 0.5f);
-    int cell = (1 * ZONE_SIZE) * MAT_N + 1 * ZONE_SIZE;
+    int cell = topLeft(5);
     CHECK(q.baseline(cell) == 100, "baseline does not follow a real load");
   }
   { // bytes sent to the server
     Processing p; learn(p, 100);
     fill(mv, 100); pressZone(mv, 5, 700); run(p, mv, 60, 0.5f);
     uint8_t out[MAT_CELLS]; p.frameBytes(out);
-    int cell = (1 * ZONE_SIZE) * MAT_N + 1 * ZONE_SIZE;
+    int cell = topLeft(5);
     CHECK(out[cell] >= 100 && out[cell] <= 102, "600 mV maps to about 102 of 255 (full scale 1500 mV)");
     CHECK(out[0] == 0, "unpressed cell is 0");
     Processing h; learn(h, 100);

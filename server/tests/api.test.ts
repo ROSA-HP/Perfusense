@@ -32,11 +32,11 @@ async function api(path: string, init: RequestInit & { json?: unknown } = {}) {
   return { status: res.status, data, res };
 }
 
-// A frame with the sacral cells (36 and 37) pressed hard.
+// A frame with the sacral cells (65 and 66) pressed hard.
 function sacralFrame(value = 200): number[] {
-  const f = Array(64).fill(0);
-  f[35] = value;
-  f[36] = value;
+  const f = Array(100).fill(0);
+  f[64] = value;
+  f[65] = value;
   return f;
 }
 
@@ -97,9 +97,15 @@ test('beds: unknown id is 404', async () => {
 test('telemetry: auth and validation', async () => {
   const noKey = await api('/telemetry/bed-102/frame', { method: 'POST', json: { cells: sacralFrame() } });
   assert.equal(noKey.status, 401);
+  const empty = await api('/telemetry/bed-102/frame', { method: 'POST', headers: KEY, json: { cells: [] } });
+  assert.equal(empty.status, 400);
   const short = await api('/telemetry/bed-102/frame', { method: 'POST', headers: KEY, json: { cells: [1, 2, 3] } });
-  assert.equal(short.status, 400);
-  const range = await api('/telemetry/bed-102/frame', { method: 'POST', headers: KEY, json: { cells: Array(64).fill(300) } });
+  assert.equal(short.status, 422);
+  // 64 values (8x8 firmware) on a 100-cell mat: rejected cleanly instead of a 500.
+  const old = await api('/telemetry/bed-102/frame', { method: 'POST', headers: KEY, json: { cells: Array(64).fill(0) } });
+  assert.equal(old.status, 422);
+  assert.match(old.data.error, /100 values, got 64/);
+  const range = await api('/telemetry/bed-102/frame', { method: 'POST', headers: KEY, json: { cells: Array(100).fill(300) } });
   assert.equal(range.status, 422);
   const unknown = await api('/telemetry/ghost/frame', { method: 'POST', headers: KEY, json: { cells: sacralFrame() } });
   assert.equal(unknown.status, 404);
@@ -111,7 +117,7 @@ test('telemetry: auth and validation', async () => {
   assert.equal(badRaw.status, 422);
 });
 
-test('telemetry: a raw 64-byte frame updates the matrix, peak and creates an alert', async () => {
+test('telemetry: a raw 100-byte frame updates the matrix, peak and creates an alert', async () => {
   const r = await api('/telemetry/bed-102/frame', {
     method: 'POST',
     headers: { ...KEY, 'content-type': 'application/octet-stream' },
@@ -121,7 +127,8 @@ test('telemetry: a raw 64-byte frame updates the matrix, peak and creates an ale
   assert.equal(r.data.peakZone, 'SACRAL');
 
   const m = (await api('/beds/bed-102/matrix')).data;
-  assert.equal(m.matrix[4][3], 3); // cell 36 = row 4, column 3
+  assert.equal(m.unit, 'mmHg');
+  assert.equal(m.matrix[6][4], 80); // cell 65 = row 6, column 4: 200 bytes x 0.4
   assert.equal(m.matrix[0][0], 0);
   assert.equal(m.peakMmHg, 80); // 200 bytes x 0.4 placeholder scale
   assert.equal(m.fresh, true);
@@ -148,9 +155,24 @@ test('telemetry: zone timers grow while loaded and recover when unloaded', async
   assert.equal(timers.find((t: any) => t.name === 'SACRUM & COCCYX').elapsedMin, 2);
   assert.equal(timers.find((t: any) => t.name === 'SACRUM & COCCYX').limitMin, 120);
 
-  await send(60_000, Array(64).fill(0)); // one minute unloaded removes two minutes (recoveryFactor 2)
+  await send(60_000, Array(100).fill(0)); // one minute unloaded removes two minutes (recoveryFactor 2)
   timers = (await api('/beds/bed-106/zone-timers')).data;
   assert.equal(timers.find((t: any) => t.name === 'SACRUM & COCCYX').elapsedMin, 0);
+});
+
+test('pressure history: one sample per minute from real frames', async () => {
+  // bed-106 received frames at -2, -1, 0 and +1 minutes in the test above.
+  const r = await api('/beds/bed-106/pressure-history?hours=1');
+  assert.equal(r.status, 200);
+  assert.equal(r.data.samples.length, 4);
+  assert.equal(r.data.summary.maxPeakMmHg, 80);
+  assert.equal(r.data.summary.maxPeakZone, 'SACRAL');
+  assert.equal(r.data.summary.latestPeakMmHg, 0);
+  // A bed whose mat never sent a frame has no history (nothing is invented).
+  const none = await api('/beds/bed-103/pressure-history?hours=8');
+  assert.equal(none.data.samples.length, 0);
+  assert.equal(none.data.summary.maxPeakMmHg, null);
+  assert.equal((await api('/beds/nope/pressure-history')).status, 404);
 });
 
 test('turns: confirm a turn schedules the next one and resolves alerts', async () => {
@@ -259,7 +281,7 @@ test('mats: tare is real, self-test uses data, unfinished features say 501', asy
   assert.equal(st.data.pass, false); // stale stream
 
   // bed-107 gets a frame with a constant offset, then tare removes it.
-  const offset = Array(64).fill(30);
+  const offset = Array(100).fill(30);
   await api('/telemetry/bed-107/frame', { method: 'POST', headers: KEY, json: { cells: offset } });
   assert.equal((await api('/mats/bed-107')).data.peakMmHg, 12); // 30 x 0.4 before tare
   assert.equal((await api('/mats/bed-107/tare', { method: 'POST' })).status, 200);
@@ -267,12 +289,28 @@ test('mats: tare is real, self-test uses data, unfinished features say 501', asy
   assert.equal((await api('/mats/bed-107')).data.peakMmHg, 0);
 
   const cells = (await api('/mats/bed-107/cells')).data;
-  assert.ok(cells.length === 100 || cells.length === 64);
+  assert.equal(cells.length, 100);
   assert.equal((await api('/mats/bed-107/cells/PZ-01/zero', { method: 'POST' })).status, 200);
   assert.equal((await api('/mats/bed-107/cells/PZ-999/zero', { method: 'POST' })).status, 404);
 
   const logs = (await api('/mats/bed-107/logs')).data;
   assert.ok(logs.some((l: any) => /Tare applied/.test(l.message)));
+
+  // A mat that sends raw bytes (ESP32 firmware) relearns its own baseline: the server must not
+  // subtract a second one, or real loads would read low by the old offset.
+  const raw = (v: number) =>
+    api('/telemetry/bed-104/frame', {
+      method: 'POST',
+      headers: { ...KEY, 'content-type': 'application/octet-stream' },
+      body: new Uint8Array(Array(100).fill(v)),
+    });
+  await raw(30);
+  const t = await api('/mats/bed-104/tare', { method: 'POST' });
+  assert.equal(t.status, 200);
+  assert.equal(t.data.mode, 'device');
+  const after = await raw(50); // the device's frames are already baseline-corrected
+  assert.equal(after.data.peakMmHg, 20); // 50 x 0.4, nothing subtracted on the server
+  assert.deepEqual(after.data.commands, ['tare']);
 
   assert.equal((await api('/mats/bed-107/calibrate', { method: 'POST' })).status, 501);
   assert.equal((await api('/mats/bed-107/cells/PZ-01/impedance-sweep', { method: 'POST' })).status, 501);
@@ -371,9 +409,9 @@ test('posture timeline: built from logged turns', async () => {
   assert.equal(flat.data.segments.length >= 1, true);
 });
 
-test('cells: status bands follow the sensor-map legend (30 / 50 mmHg)', async () => {
+test('cells: status bands follow the one pressure scale (32 / 55 mmHg)', async () => {
   // 100 bytes = 40 mmHg (warn), 140 bytes = 56 mmHg (critical), 50 bytes = 20 mmHg (nominal)
-  const f = Array(64).fill(0);
+  const f = Array(100).fill(0);
   f[0] = 50;
   f[1] = 100;
   f[2] = 140;
@@ -387,7 +425,7 @@ test('cells: status bands follow the sensor-map legend (30 / 50 mmHg)', async ()
 
 test('device commands: ack and tare are queued and delivered exactly once', async () => {
   const send = () =>
-    api('/telemetry/bed-105/frame', { method: 'POST', headers: KEY, json: { cells: Array(64).fill(0) } });
+    api('/telemetry/bed-105/frame', { method: 'POST', headers: KEY, json: { cells: Array(100).fill(0) } });
   await send(); // drain anything left over from earlier tests
   let r = await send();
   assert.deepEqual(r.data.commands, []);

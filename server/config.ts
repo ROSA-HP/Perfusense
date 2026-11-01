@@ -13,17 +13,17 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
   // Shared secret the ESP32 (or any device) sends in the x-device-key header.
-  deviceKey: process.env.DEVICE_KEY || 'dev-device-key',
+  // The default matches the firmware's config.h and .env.example, for development only.
+  deviceKey: process.env.DEVICE_KEY || 'change-me-device-key',
   // Time zone used when the API formats clock times for the UI.
   wardTz: process.env.WARD_TZ || 'Africa/Cairo',
   // Feed fake telemetry for every bed so the UI is alive without hardware.
   simulate: process.env.SIMULATE === 'true',
-  // Track whether external secret values have been received yet
-  secretsPending: !process.env.DEVICE_KEY || process.env.DEVICE_KEY === 'change-me-device-key' || process.env.DEVICE_KEY === 'dev-device-key',
+  // True while DEVICE_KEY is missing or still one of the public example values.
+  defaultDeviceKey: !process.env.DEVICE_KEY || ['change-me-device-key', 'dev-device-key'].includes(process.env.DEVICE_KEY),
   isProd: process.env.NODE_ENV === 'production',
 };
 
-// NOTE: User has not provided secret values yet. Saved pending status.
-if (config.secretsPending) {
-  console.info('[PERFUSENSE CONFIG] Notice: Secret values (DEVICE_KEY / API credentials) have not been provided yet. Using development placeholder.');
+if (config.defaultDeviceKey) {
+  console.warn('[config] DEVICE_KEY is the public example value. Fine for development; set your own in .env before real use.');
 }

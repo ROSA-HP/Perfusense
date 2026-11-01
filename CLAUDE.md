@@ -4,7 +4,7 @@ Guidance for Claude Code working in this repository.
 
 ## Project in one paragraph
 
-PerfuSense is an ISEF research prototype: a 10×10 (100-cell) Velostat pressure mat under a bedridden patient, read by an ESP32, which times how long each body area stays loaded and alerts caregivers to turn the patient before a pressure ulcer forms. This repo holds the **React dashboard** (`src/`) and the **Express + MongoDB backend** (`server/`). The ESP32 firmware (still 8×8) is in `firmware/`; the AI model is not built yet. Full background, numbers and design rationale: `PERFUSENSE_GUIDE.md`.
+PerfuSense is an ISEF research prototype: a 10×10 (100-cell) Velostat pressure mat under a bedridden patient, read by an ESP32, which times how long each body area stays loaded and alerts caregivers to turn the patient before a pressure ulcer forms. This repo holds the **React dashboard** (`src/`) and the **Express + MongoDB backend** (`server/`). The ESP32 firmware (10×10, not yet run on a board) is in `firmware/`; the AI model is not built yet. Full background, numbers and design rationale: `PERFUSENSE_GUIDE.md`.
 
 ## Hard rules
 
@@ -19,7 +19,8 @@ PerfuSense is an ISEF research prototype: a 10×10 (100-cell) Velostat pressure 
 - `PERFUSENSE_GUIDE.md`: current description (10×10, HTTP).
 - `server/README.md`: backend details (some 8×8 wording is outdated).
 - `Perfusense.md` (PRD v1.1) and `PLAN.md`: **historical**. They describe an 8×8 mat with MQTT, `server.js` and a `web/` folder that do not exist. Use them only for the AI-pipeline code in PRD Appendix D, and change its input size to 10×10.
-- `README.md`: outdated (says 64-channel, old colour table).
+- `README.md`: short overview and run instructions (current).
+- `docs/TEAM_PLAN.md`: who does what next.
 
 ## Commands
 
@@ -39,14 +40,7 @@ bash firmware/run_checks.sh # firmware logic tests + type checks; need g++
 npm run build               # production build of the UI
 ```
 
-**Connecting the UI to the API:** `vite.config.ts` only proxies `/api` when `API_URL` is set; otherwise it serves a standalone fallback and the UI shows mock data.
-
-```bash
-API_URL=http://localhost:4000 npm run dev                   # bash
-$env:API_URL="http://localhost:4000"; npm run dev           # Windows PowerShell
-```
-
-Alternatively set `VITE_API_URL=http://localhost:4000` in `.env` (client calls the API directly; `CORS_ORIGIN` must include the UI origin).
+**Connecting the UI to the API:** `vite.config.ts` always proxies `/api` to `API_URL` (default `http://localhost:4000`). When the API is down the proxy answers 503 and the UI switches to SAMPLE DATA mode (orange banner) until `/api/health` answers again. Alternatively set `VITE_API_URL=http://localhost:4000` in `.env` (client calls the API directly; `CORS_ORIGIN` must include the UI origin).
 
 MongoDB: local install or `docker run -d -p 27017:27017 mongo:7`. Tests use `perfusense_test` on localhost (override with `MONGODB_TEST_URI`) and drop it afterwards. The team develops on Windows.
 
@@ -65,16 +59,17 @@ React --REST /api/...--> Express  (turns, snooze, zone resets, settings, tare)
 - `app.ts` mounts routers under `/api`: `beds`, `audit-logs`, `mats`, `telemetry` + `stream`, and `ward` (health, settings, broadcasts).
 - `services/ingest.ts`: per-frame pipeline (validate → tare baseline → mmHg → levels → cell status → peak → six body-zone timers → alerts → save → broadcast).
 - `services/derive.ts`: bed `status`, `statusLabel`, `countdown` are **computed on each request, never stored**. Do not add stored status fields.
-- `services/beds.ts`: turn, snooze, defer, off-bed, zone resets, posture timeline.
+- `services/beds.ts`: turn, snooze, defer, off-bed, zone resets, posture timeline, pressure history (`PressureSample`: one per bed per minute, kept 7 days).
+- Tare: a mat sending raw bytes (ESP32) relearns its own baseline, so the server clears its own; JSON sources get a server baseline. Never subtract both.
 - `services/hub.ts`: server-sent events (`hello`, `frame`, `bed`, `alert`, `broadcast`).
 - `lib/settings.ts`: all tunable values with Zod validation and defaults. `lib/zones.ts`: cell → body-zone mapping. `data/cellLayout.ts`: zone name of each of the 100 cells.
 - `models.ts`: Bed, MatState, AuditLog, BedEvent, HardwareLog, Broadcast, Setting. Grids are stored **flat** (100 numbers) and returned as 2-D arrays.
 
 ### Front end (`src/`)
 
-- `App.tsx` is the state hub. Monitored bed is hard-coded as `bed-07`. Falls back to `data/mockData.ts` when the API is down (15 s health heartbeat).
+- `App.tsx` is the state hub: connection (15 s health check), live stream, roster refresh every 30 s, and the monitored bed (default `bed-07`, changed from the Beds page). When connected the API is the only data source (an empty list stays empty); when it is down the app shows `data/mockData.ts` under a SAMPLE DATA banner.
 - `api/client.ts`: typed REST calls and `connectLive()` (EventSource). Add new endpoints here, not with raw `fetch` in views.
-- Views: `LiveHeatmapView`, `TurnScheduleView`, `BedRosterView`, `PeakAlertsView`, `SensorHardwareView`. Shared types in `types.ts`. Heatmap colours in `utils/heatmapColors.ts`.
+- Views: `LiveHeatmapView`, `TurnScheduleView`, `BedRosterView`, `PeakAlertsView`, `SensorHardwareView`. Shared types in `types.ts`. Shared UI pieces (Card, Chip, Button, SampleBadge, HeatCell, PressureLegend, Icon) in `components/ui.tsx`: use them instead of new one-off styles. Heatmap colours in `utils/heatmapColors.ts`: values are always mmHg, band edges come from `settings.telemetry.levelMmHg` via `setPressureScale()`.
 
 ## Contracts (do not break without updating the firmware)
 
@@ -96,12 +91,11 @@ React --REST /api/...--> Express  (turns, snooze, zone resets, settings, tare)
 
 ## Known issues (priority order)
 
-1. **64-cell frames crash ingest (500).** Mat state has 100 cells; a 64-value frame gives `NaN` loads and the save fails. 6 of 22 tests fail for this reason (they still send 64-cell frames) at commit `9c98459`. Fix: reject a frame whose length differs from the mat's cell count with 422, and update the tests to 100-cell frames.
-2. **Firmware is still 8×8** (`firmware/perfusense_mat/`). A 10×10 version needs 10 row pins and mux S0–S3 (proposed pin map in `PERFUSENSE_GUIDE.md` §5.4). Keep `Processing` free of Arduino calls so its host tests still run.
-3. **Threshold scales disagree:** UI legend 15 / 32 / 55 mmHg vs server `levelMmHg` [10, 25, 40], cell bands 30 / 50, critical 65. Unify through settings.
-4. **Mock AI output looks real:** `LiveHeatmapView` shows "CONFIDENCE: 94.2%". Label as SAMPLE DATA or hide until a model exists.
-5. Countdowns are computed server-side; the roster only refreshes on `bed` events or reload. Consider polling `/api/beds` every 30–60 s.
-6. Cleanup: unused `@google/genai` and `GEMINI_API_KEY`; outdated `README.md`.
+1. **Nothing has run on real hardware yet.** The firmware is now 10×10 (`firmware/perfusense_mat/`, pin map in `firmware/README.md`) but has not been compiled for or flashed to an ESP32, and its host tests need g++. Keep `Processing` free of Arduino calls so the host tests still run.
+2. **Capacitor on the mux SIG line:** 10 kΩ × 0.1 µF = 1 ms RC, but `SETTLE_US` is 80 µs, so the previous cell bleeds into the next (crosstalk). Use about 10 nF or a longer settle, then re-measure crosstalk.
+3. **Server integration tests have not been run since the last changes** (no MongoDB on the dev machine). Run `npm run test:server` before relying on them.
+4. **No login, no HTTPS:** anyone who can reach the API can read and change data. RN names come from the bed's assigned RN, not from a signed-in user.
+5. An existing database keeps the old pressure scale [10, 25, 40] in its stored settings: run `npm run seed` (resets data) or `PUT /api/settings` with `{"telemetry":{"levelMmHg":[15,32,55],"cellWarnMmHg":32,"cellCriticalMmHg":55}}`.
 
 ## Not built yet
 

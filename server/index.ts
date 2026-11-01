@@ -7,6 +7,10 @@ import { hub } from './services/hub';
 import { startSimulator } from './simulator';
 
 async function main() {
+  if (config.isProd && config.defaultDeviceKey) {
+    console.error('Refusing to start in production with the example DEVICE_KEY. Set DEVICE_KEY in .env.');
+    process.exit(1);
+  }
   mongoose.set('strictQuery', true);
   try {
     await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });

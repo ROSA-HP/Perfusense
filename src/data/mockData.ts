@@ -1,4 +1,34 @@
 import { PatientBed, PiezoCell, ZoneTimer, AuditLogItem } from '../types';
+import type { Settings } from '../types';
+
+// Everything in this file is SAMPLE DATA, shown only while the backend is offline.
+// The UI labels it as such (see the SAMPLE DATA banner in App.tsx).
+
+// Same values as the server defaults in server/lib/settings.ts (all placeholders).
+export const SAMPLE_SETTINGS: Settings = {
+  thresholds: { criticalMmHg: 65, maxDwellMin: 60, warnMmHg: 45, autoPage: true },
+  protocol: { cadenceMin: 120, skinEnforce: true, preAlertMin: 15 },
+  zoneLimitsMin: {
+    'SACRUM & COCCYX': 120,
+    'HEELS (CALCANEUS)': 90,
+    'LEFT TROCHANTER (HIP)': 120,
+    'SHOULDERS (SCAPULAE)': 120,
+    'RIGHT TROCHANTER (HIP)': 120,
+    'ELBOWS & OCCIPUT': 120,
+  },
+  telemetry: {
+    mmHgPerByte: 0.4,
+    levelMmHg: [15, 32, 55],
+    loadedMmHg: 20,
+    recoveryFactor: 2,
+    nearLimitRatio: 0.85,
+    elevatedRatio: 0.6,
+    elevatedMmHg: 30,
+    staleSec: 30,
+    cellWarnMmHg: 32,
+    cellCriticalMmHg: 55,
+  },
+};
 
 export const INITIAL_BEDS: PatientBed[] = [
   {
@@ -247,7 +277,7 @@ export const INITIAL_ZONE_TIMERS: ZoneTimer[] = [
   { name: 'ELBOWS & OCCIPUT', elapsedMin: 18, limitMin: 120 },
 ];
 
-// 100 Piezoelectric Transducers (10x10 Matrix)
+// 100 mat cells (10x10 pressure-sensitive Velostat grid)
 export const INITIAL_PIEZO_CELLS: PiezoCell[] = [
   // Row 1 (1-10): Head & Occipital
   { id: 'PZ-01', num: 1, zone: 'OCCIPITAL', load: 12, volt: '1.21 V', snr: '49.8 dB', offset: '+0.01 mV', impedance: '4.10 kΩ', status: 'nominal' },

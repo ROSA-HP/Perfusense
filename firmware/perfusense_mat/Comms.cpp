@@ -6,6 +6,7 @@
 // main loop only hands over the newest frame and picks up commands.
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <atomic>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -16,8 +17,10 @@
 static uint8_t frameBuf[MAT_CELLS];
 static bool frameFresh = false;
 static SemaphoreHandle_t lock;          // protects frameBuf and frameFresh
-static volatile bool ackFlag = false;
-static volatile bool tareFlag = false;
+// Set by the network task, taken by the main loop. Atomic so a command that arrives while the
+// main loop is taking the previous one is never lost.
+static std::atomic<bool> ackFlag(false);
+static std::atomic<bool> tareFlag(false);
 static CommsStats stats = {0, 0, 0};
 
 static void netTask(void*) {
@@ -71,6 +74,7 @@ static void netTask(void*) {
       if (code != lastReportedCode) {               // say why, once per change
         if (code == 401) Serial.println("Server refused the device key (check DEVICE_KEY).");
         else if (code == 404) Serial.println("Server does not know this BED_ID.");
+        else if (code == 422) Serial.println("Server refused the frame (MAT_N in config.h must match the mat size on the server).");
         else if (code < 0) Serial.println("Cannot reach the server (check SERVER_URL and that it is running).");
         else Serial.printf("Server replied with HTTP %d\n", code);
       }
@@ -94,16 +98,8 @@ void commsPublishFrame(const uint8_t* bytes) {
   }
 }
 
-bool commsTakeAck() {
-  const bool v = ackFlag;
-  ackFlag = false;
-  return v;
-}
+bool commsTakeAck() { return ackFlag.exchange(false); }
 
-bool commsTakeTare() {
-  const bool v = tareFlag;
-  tareFlag = false;
-  return v;
-}
+bool commsTakeTare() { return tareFlag.exchange(false); }
 
 CommsStats commsStats() { return stats; }

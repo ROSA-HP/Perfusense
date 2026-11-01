@@ -1,6 +1,6 @@
 {
   "name": "Perfusense",
-  "description": "Continuous pressure injury prevention and 64-channel piezoelectric mat telemetry operating system.",
+  "description": "Research prototype: a 10x10 pressure-sensing mat and ward dashboard that times how long each body area stays loaded and reminds caregivers to turn the patient. Not a medical device.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

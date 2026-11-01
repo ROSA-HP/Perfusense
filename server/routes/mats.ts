@@ -36,7 +36,7 @@ matsRouter.get(
   }),
 );
 
-// Just the 64 piezo cells, in the shape of the UI's PiezoCell type.
+// Just the 100 mat cells, in the shape of the UI's PiezoCell type.
 matsRouter.get(
   '/:bedId/cells',
   asyncHandler(async (req, res) => {
@@ -55,7 +55,10 @@ matsRouter.get(
 );
 
 // Tare: the current empty-mat reading becomes zero. Do this with nothing on the mat.
-// This is real: later frames have this baseline subtracted.
+// Only one baseline may be subtracted, or real loads read low by the old offset:
+//   - ESP32 firmware (raw frames) relearns its own baseline on the "tare" command, so the
+//     server clears its baseline instead of storing one.
+//   - Other sources (JSON frames) do not subtract a baseline, so the server stores one.
 matsRouter.post(
   '/:bedId/tare',
   asyncHandler(async (req, res) => {
@@ -64,11 +67,17 @@ matsRouter.post(
     if (!isFresh(mat.lastFrameAt, settings, new Date())) {
       throw new ApiError(409, 'No recent frames from this mat. Check the device connection first.');
     }
-    // rawLast holds raw bytes; the baseline is the raw reading at tare time.
+    await queueDeviceCommand(mat.bedId, 'tare');
+    if (mat.lastFrameFormat === 'raw') {
+      await MatState.updateOne({ bedId: mat.bedId }, { $set: { baselineRaw: Array(mat.cells.length).fill(0) } });
+      await log(mat.bedId, 'Tare applied: sent to the mat, which relearns its own baseline');
+      res.json({ ok: true, mode: 'device', message: 'Tare sent to the mat. Keep it empty for a few seconds.' });
+      return;
+    }
+    // rawLast holds the raw reading at tare time: that becomes the baseline.
     await MatState.updateOne({ bedId: mat.bedId }, { $set: { baselineRaw: mat.rawLast } });
-    await queueDeviceCommand(mat.bedId, 'tare'); // the mat relearns its own baseline too
     await log(mat.bedId, 'Tare applied: zero plane stored from the latest frame');
-    res.json({ ok: true, message: 'Baseline stored. Make sure the mat was empty.' });
+    res.json({ ok: true, mode: 'server', message: 'Baseline stored. Make sure the mat was empty.' });
   }),
 );
 
@@ -87,7 +96,7 @@ matsRouter.post(
   }),
 );
 
-// Self-test based on real data: are all 64 cells reporting, is the stream fresh, any stuck cell?
+// Self-test based on real data: are all cells reporting, is the stream fresh, any stuck cell?
 matsRouter.post(
   '/:bedId/self-test',
   asyncHandler(async (req, res) => {
@@ -103,7 +112,7 @@ matsRouter.post(
     });
     checks.push({
       name: 'Cell count',
-      pass: (mat.cells.length === 100 || mat.cells.length === 64) && (mat.rawLast.length === 100 || mat.rawLast.length === 64),
+      pass: mat.cells.length > 0 && mat.rawLast.length === mat.cells.length,
       detail: `${mat.cells.length} cells, ${mat.rawLast.length} readings`,
     });
     const saturated = mat.rawLast.filter((v) => v >= 255).length;

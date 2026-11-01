@@ -55,3 +55,22 @@ export interface AuditLogItem {
   attendingRn: string;
   status: 'ACTIVE' | 'RESOLVED';
 }
+
+// Ward settings as returned by GET /api/settings (all values are placeholders, see server/lib/settings.ts).
+export type Settings = {
+  thresholds: { criticalMmHg: number; maxDwellMin: number; warnMmHg: number; autoPage: boolean };
+  protocol: { cadenceMin: number; skinEnforce: boolean; preAlertMin: number };
+  zoneLimitsMin: Record<string, number>;
+  telemetry: {
+    mmHgPerByte: number;
+    levelMmHg: [number, number, number];
+    loadedMmHg: number;
+    recoveryFactor: number;
+    nearLimitRatio: number;
+    elevatedRatio: number;
+    elevatedMmHg: number;
+    staleSec: number;
+    cellWarnMmHg: number;
+    cellCriticalMmHg: number;
+  };
+};
