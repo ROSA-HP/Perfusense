@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { PatientBed } from '../types';
 import { api, PressureHistory, Settings } from '../api/client';
 import { pressureStyle, getPressureScale } from '../utils/heatmapColors';
-import { Button, Card, Chip, EmptyState, PageHeader, SampleBadge, Stat } from '../components/ui';
+import { Button, Card, Chip, Disclosure, EmptyState, PageHeader, SampleBadge, Stat } from '../components/ui';
 
 interface TurnScheduleViewProps {
   bed: PatientBed;
@@ -53,6 +53,7 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({ bed, connect
   const [data, setData] = useState<PressureHistory | null>(null);
   const [error, setError] = useState('');
   const [hover, setHover] = useState<number | null>(null);
+  const [turnsOpen, setTurnsOpen] = useState(false);
 
   useEffect(() => {
     if (!connected) {
@@ -125,33 +126,40 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({ bed, connect
 
       {error && <EmptyState title="Could not load history">{error}</EmptyState>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-        <Stat label="Latest peak" value={s?.latestPeakMmHg != null ? `${s.latestPeakMmHg} mmHg` : '—'} sub={s?.latestPeakMmHg != null ? pressureStyle(s.latestPeakMmHg).label : 'no data'} tone="teal" />
-        <Stat
-          label="Highest peak"
-          value={s?.maxPeakMmHg != null ? `${s.maxPeakMmHg} mmHg` : '—'}
-          sub={s?.maxPeakAt ? `${dayClock(s.maxPeakAt)} · ${s.maxPeakZone}` : 'no data'}
-          tone="carmine"
-        />
-        <Stat label="Average peak" value={s?.meanPeakMmHg != null ? `${s.meanPeakMmHg} mmHg` : '—'} sub={`${s?.samples ?? 0} samples`} />
-        <Stat label="Turns logged" value={s?.turns ?? 0} sub={`target: every ${settings.protocol.cadenceMin} min`} tone="teal" />
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-3 anim-stagger">
+        <div style={{ '--i': 0 } as React.CSSProperties}>
+          <Stat label="Latest peak" value={s?.latestPeakMmHg != null ? `${s.latestPeakMmHg} mmHg` : '—'} sub={s?.latestPeakMmHg != null ? pressureStyle(s.latestPeakMmHg).label : 'no data'} tone="teal" />
+        </div>
+        <div style={{ '--i': 1 } as React.CSSProperties}>
+          <Stat
+            label="Highest peak"
+            value={s?.maxPeakMmHg != null ? `${s.maxPeakMmHg} mmHg` : '—'}
+            sub={s?.maxPeakAt ? `${dayClock(s.maxPeakAt)} · ${s.maxPeakZone}` : 'no data'}
+            tone="carmine"
+          />
+        </div>
+        <div style={{ '--i': 2 } as React.CSSProperties}>
+          <Stat label="Turns logged" value={s?.turns ?? 0} sub={`target: every ${settings.protocol.cadenceMin} min`} tone="teal" />
+        </div>
       </div>
 
-      <Card className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b-[2px] border-[#121c1b]">
-          <h2 className="font-bold uppercase text-sm">Peak pressure ({range.id})</h2>
-          <div className="flex items-center gap-3 font-label-mono-sm text-[10px]">
+      <Card
+        className="flex flex-col gap-3 anim-rise"
+        title={`Peak pressure, ${range.id}`}
+        action={
+          <span className="flex items-center gap-3 font-label-mono-sm">
             <span className="inline-flex items-center gap-1">
               <span className="w-3 h-0.5 bg-[#d97757]" /> heavy ≥ {heavy}
             </span>
-            <span className="inline-flex items-center gap-1 text-[#8b2635] font-bold">
-              <span className="w-3 h-0.5 bg-[#8b2635]" /> hot spot ≥ {hot}
+            <span className="inline-flex items-center gap-1 text-[#8b2635]">
+              <span className="w-3 h-0.5 bg-[#8b2635]" /> hot ≥ {hot}
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rotate-45 bg-[#121c1b]" /> turn
             </span>
-          </div>
-        </div>
+          </span>
+        }
+      >
         {!chart ? (
           <EmptyState title="No pressure data in this window">Samples appear once the mat sends frames (one per minute is stored).</EmptyState>
         ) : (
@@ -168,7 +176,7 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({ bed, connect
               <rect x={chart.px} width={chart.W - chart.px * 2} y={chart.y(chart.yMax)} height={chart.y(hot) - chart.y(chart.yMax)} fill="#8b2635" opacity="0.07" />
               <line x1={chart.px} x2={chart.W - chart.px} y1={chart.y(heavy)} y2={chart.y(heavy)} stroke="#d97757" strokeDasharray="4,4" strokeWidth="1.5" />
               <line x1={chart.px} x2={chart.W - chart.px} y1={chart.y(hot)} y2={chart.y(hot)} stroke="#8b2635" strokeDasharray="4,4" strokeWidth="1.5" />
-              <polyline points={chart.pts} fill="none" stroke="#1d635d" strokeWidth="2" strokeLinejoin="round" />
+              <polyline key={`${range.id}-${data!.samples.length}`} points={chart.pts} pathLength={1} fill="none" stroke="#1d635d" strokeWidth="2" strokeLinejoin="round" className="anim-draw" />
               {data!.turns.map((t, i) => (
                 <g key={i}>
                   <line x1={chart.x(t.at)} x2={chart.x(t.at)} y1={chart.py} y2={chart.H - chart.py} stroke="#121c1b" strokeWidth="1" strokeDasharray="2,3" />
@@ -194,27 +202,42 @@ export const TurnScheduleView: React.FC<TurnScheduleViewProps> = ({ bed, connect
               <strong>{clock(hovered.at)}</strong> · peak {hovered.peakMmHg} mmHg ({pressureStyle(hovered.peakMmHg).label}) · {hovered.peakZone || '—'} · {hovered.loadedCells} loaded cells
             </>
           ) : (
-            <span className="text-[#3f4947]">Hover the chart to read a sample.</span>
+            <span className="text-[#3f4947]">
+              Hover the chart to read a sample{s?.meanPeakMmHg != null ? ` · average peak ${s.meanPeakMmHg} mmHg over ${s.samples} samples` : ''}.
+            </span>
           )}
         </div>
       </Card>
 
-      <Card className="flex flex-col gap-2">
-        <h2 className="font-bold uppercase text-sm pb-2 border-b-[2px] border-[#121c1b]">Turns in this window</h2>
-        {!data || data.turns.length === 0 ? (
-          <EmptyState title="No turns logged" />
-        ) : (
-          <ul className="divide-y divide-[#121c1b]/20">
-            {[...data.turns].reverse().map((t, i) => (
-              <li key={i} className="py-2 flex flex-wrap items-center gap-2 font-label-mono-sm text-xs">
-                <Chip tone="ink">{dayClock(t.at)}</Chip>
-                <span className="font-bold">{t.posture}</span>
-                {t.rn && <span className="text-[#3f4947]">by {t.rn}</span>}
-                {t.note && <span className="text-[#3f4947] truncate">· {t.note}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
+      <Card>
+        <Disclosure
+          open={turnsOpen}
+          onToggle={() => setTurnsOpen((v) => !v)}
+          summary={
+            <span className="flex items-center gap-2 font-bold">
+              <span className="w-3.5 h-3.5 bg-[#8b2635]" />
+              Turns in this window
+              <Chip tone="ink">{data?.turns.length ?? 0}</Chip>
+            </span>
+          }
+        >
+          <div className="pt-2">
+            {!data || data.turns.length === 0 ? (
+              <EmptyState title="No turns logged" />
+            ) : (
+              <ul className="divide-y divide-[#121c1b]/20">
+                {[...data.turns].reverse().map((t, i) => (
+                  <li key={i} className="py-2 flex flex-wrap items-center gap-2 font-label-mono-sm">
+                    <Chip tone="ink">{dayClock(t.at)}</Chip>
+                    <span>{t.posture}</span>
+                    {t.rn && <span className="text-[#3f4947] font-normal">by {t.rn}</span>}
+                    {t.note && <span className="text-[#3f4947] font-normal truncate">· {t.note}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Disclosure>
       </Card>
     </div>
   );
