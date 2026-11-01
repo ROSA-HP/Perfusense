@@ -51,7 +51,6 @@ export default function App() {
   const [turnModalBed, setTurnModalBed] = useState<PatientBed | null>(null);
   const [isThresholdOpen, setIsThresholdOpen] = useState(false);
   const [isProtocolOpen, setIsProtocolOpen] = useState(false);
-  const [inspectBed, setInspectBed] = useState<PatientBed | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const toastTimer = useRef<number | undefined>(undefined);
@@ -326,7 +325,6 @@ export default function App() {
               cadenceMin={settings.protocol.cadenceMin}
               onMonitor={monitorBed}
               onLogTurnForBed={(b) => setTurnModalBed(b)}
-              onInspectBed={(b) => setInspectBed(b)}
             />
           )}
           {activeTab === 'peak-alerts' && monitoredBed && (
@@ -392,12 +390,6 @@ export default function App() {
         isProtocolOpen={isProtocolOpen}
         onCloseProtocol={() => setIsProtocolOpen(false)}
         onSaveProtocol={(cadenceMin) => saveSettings({ protocol: { cadenceMin } }, 'TURN CADENCE SAVED')}
-        inspectBed={inspectBed}
-        onCloseInspect={() => setInspectBed(null)}
-        onMonitorBed={(id) => {
-          setInspectBed(null);
-          monitorBed(id);
-        }}
         toast={toast}
         onDismissToast={() => setToast(null)}
       />

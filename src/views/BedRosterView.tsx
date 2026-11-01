@@ -10,7 +10,6 @@ interface BedRosterViewProps {
   cadenceMin: number;
   onMonitor: (bedId: string) => void;
   onLogTurnForBed: (bed: PatientBed) => void;
-  onInspectBed: (bed: PatientBed) => void;
 }
 
 type Filter = 'all' | 'turn' | 'risk' | 'off';
@@ -43,7 +42,7 @@ function turnProgress(bed: BedRosterViewProps['beds'][number], cadenceMin: numbe
 function MiniMap({ levels }: { levels: number[][] }) {
   const n = levels.length || 10;
   return (
-    <div className="grid gap-px bg-[#121c1b] border-[2px] border-[#121c1b] w-[72px] h-[72px] shrink-0" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }} aria-hidden>
+    <div className="grid gap-px bg-[#121c1b] border-[2px] border-[#121c1b] w-[104px] h-[104px] shrink-0" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }} aria-hidden>
       {levels.flat().map((lvl, i) => (
         <span key={i} style={{ background: pressureStyle(levelToMmHg(lvl)).bg }} />
       ))}
@@ -51,8 +50,9 @@ function MiniMap({ levels }: { levels: number[][] }) {
   );
 }
 
-export const BedRosterView: React.FC<BedRosterViewProps> = ({ beds, monitoredId, connected, cadenceMin, onMonitor, onLogTurnForBed, onInspectBed }) => {
+export const BedRosterView: React.FC<BedRosterViewProps> = ({ beds, monitoredId, connected, cadenceMin, onMonitor, onLogTurnForBed }) => {
   const [filter, setFilter] = useState<Filter>('all');
+  const [openId, setOpenId] = useState<string | null>(null); // the one bed whose details are open
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'urgency' | 'bed'>('urgency');
   const [now, setNow] = useState(Date.now());
@@ -81,7 +81,7 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({ beds, monitoredId,
 
   return (
     <div className="flex flex-col gap-3.5 sm:gap-4 w-full">
-      <PageHeader title="Beds" subtitle="Most urgent first. Tap MONITOR to open a bed on the live map.">
+      <PageHeader title="Beds" subtitle="Most urgent first. Tap a bed to see its pressure map and details.">
         {!connected && <SampleBadge />}
         <input
           value={query}
@@ -125,11 +125,12 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({ beds, monitoredId,
       {shown.length === 0 ? (
         <EmptyState title="No beds match">Change the filter or the search.</EmptyState>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 items-start">
           {shown.map((bed) => {
             const tone = STATUS_TONE[bed.status];
             const urgent = bed.status === 'overdue' || bed.status === 'due_now';
             const monitored = bed.id === monitoredId;
+            const open = openId === bed.id;
             const progress = turnProgress(bed, cadenceMin, now);
             const peak = pressureStyle(bed.peakPressure);
             return (
@@ -138,24 +139,40 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({ beds, monitoredId,
                 className={`bg-white border-[3px] ${urgent ? 'border-[#8b2635]' : 'border-[#121c1b]'} shadow-[3px_3px_0px_#121c1b] flex flex-col ${monitored ? 'ring-[3px] ring-[#1d635d] ring-offset-2 ring-offset-[#f1fcf9]' : ''}`}
               >
                 <div className={`${tone.bar} h-2 border-b-[2px] border-[#121c1b]`} />
-                <div className="p-3 flex flex-col gap-2.5 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-base uppercase">{bed.bedNumber}</span>
-                        {monitored && <Chip tone="teal">Monitoring</Chip>}
-                      </div>
-                      <div className="font-bold text-sm truncate">{bed.patientName}</div>
-                      <div className="font-label-mono-sm text-[10px] text-[#3f4947] truncate">
-                        {bed.pod} · {bed.assignedRn || 'no RN'}
-                      </div>
-                    </div>
+
+                {/* Closed: only what decides who to turn next. Tap to open the details. */}
+                <button
+                  type="button"
+                  onClick={() => setOpenId(open ? null : bed.id)}
+                  aria-expanded={open}
+                  className="p-3 flex flex-col gap-2 text-left hover:bg-[#f7fdfb]"
+                >
+                  <div className="flex items-center justify-between gap-2 w-full">
+                    <span className="font-bold text-base uppercase">{bed.bedNumber}</span>
                     <Chip tone={tone.chip} className={urgent ? 'animate-pulse' : ''}>
                       {bed.statusLabel}
                     </Chip>
                   </div>
+                  <div className="font-bold text-sm truncate w-full">{bed.patientName}</div>
+                  <div className="w-full">
+                    <div className="flex justify-between items-baseline font-label-mono-sm text-[10px] font-bold mb-0.5">
+                      <span className="text-[#3f4947]">{bed.status === 'ambulating' ? 'OUT OF BED FOR' : 'NEXT TURN'}</span>
+                      <span className={`text-sm ${urgent ? 'text-[#8b2635]' : ''}`}>{bed.countdown}</span>
+                    </div>
+                    {bed.status !== 'ambulating' && (
+                      <div className="h-2.5 bg-[#ebf6f4] border-[2px] border-[#121c1b]" title={`${progress}% of the ${cadenceMin}-minute turn window used`}>
+                        <div className={`h-full ${tone.bar} transition-all`} style={{ width: `${progress}%` }} />
+                      </div>
+                    )}
+                  </div>
+                  <span className="font-label-mono-sm text-[10px] text-[#3f4947] self-end">
+                    {monitored ? 'MONITORING · ' : ''}
+                    {open ? 'HIDE DETAILS ▴' : 'DETAILS ▾'}
+                  </span>
+                </button>
 
-                  <div className="flex gap-3 items-center">
+                {open && (
+                  <div className="px-3 pb-3 flex gap-3 items-start border-t-[2px] border-dashed border-[#121c1b]/40 pt-3">
                     <MiniMap levels={bed.sensorMini} />
                     <dl className="flex-1 grid grid-cols-2 gap-x-2 gap-y-1 font-label-mono-sm text-[10px] min-w-0">
                       <dt className="text-[#3f4947]">Braden</dt>
@@ -173,36 +190,29 @@ export const BedRosterView: React.FC<BedRosterViewProps> = ({ beds, monitoredId,
                       </dd>
                       <dt className="text-[#3f4947]">Last turn</dt>
                       <dd className="font-bold text-right">{bed.lastTurnTime}</dd>
+                      <dt className="text-[#3f4947]">Pod</dt>
+                      <dd className="font-bold text-right truncate">{bed.pod}</dd>
+                      <dt className="text-[#3f4947]">RN</dt>
+                      <dd className="font-bold text-right truncate">{bed.assignedRn || '—'}</dd>
                     </dl>
                   </div>
+                )}
 
-                  <div>
-                    <div className="flex justify-between items-baseline font-label-mono-sm text-[10px] font-bold mb-0.5">
-                      <span className="text-[#3f4947]">{bed.status === 'ambulating' ? 'OUT OF BED FOR' : 'NEXT TURN'}</span>
-                      <span className={`text-sm ${urgent ? 'text-[#8b2635]' : ''}`}>{bed.countdown}</span>
-                    </div>
-                    {bed.status !== 'ambulating' && (
-                      <div className="h-2.5 bg-[#ebf6f4] border-[2px] border-[#121c1b]" title={`${progress}% of the ${cadenceMin}-minute turn window used`}>
-                        <div className={`h-full ${tone.bar} transition-all`} style={{ width: `${progress}%` }} />
-                      </div>
+                {(open || urgent) && (
+                  <div className={`grid ${open ? 'grid-cols-2' : 'grid-cols-1'} border-t-[2px] border-[#121c1b] mt-auto`}>
+                    {open && (
+                      <button onClick={() => onMonitor(bed.id)} className="py-2.5 font-label-mono-sm text-[11px] font-bold uppercase hover:bg-[#adefe7] border-r-[2px] border-[#121c1b]">
+                        Monitor
+                      </button>
                     )}
+                    <button
+                      onClick={() => onLogTurnForBed(bed)}
+                      className={`py-2.5 font-label-mono-sm text-[11px] font-bold uppercase ${urgent ? 'bg-[#8b2635] text-white hover:bg-[#6c1c28]' : 'hover:bg-[#ebf6f4]'}`}
+                    >
+                      Log turn
+                    </button>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-3 border-t-[2px] border-[#121c1b]">
-                  <button onClick={() => onMonitor(bed.id)} className="py-2.5 font-label-mono-sm text-[11px] font-bold uppercase hover:bg-[#adefe7] border-r-[2px] border-[#121c1b]">
-                    Monitor
-                  </button>
-                  <button
-                    onClick={() => onLogTurnForBed(bed)}
-                    className={`py-2.5 font-label-mono-sm text-[11px] font-bold uppercase border-r-[2px] border-[#121c1b] ${urgent ? 'bg-[#8b2635] text-white hover:bg-[#6c1c28]' : 'hover:bg-[#ebf6f4]'}`}
-                  >
-                    Log turn
-                  </button>
-                  <button onClick={() => onInspectBed(bed)} className="py-2.5 font-label-mono-sm text-[11px] font-bold uppercase hover:bg-[#ebf6f4]">
-                    Details
-                  </button>
-                </div>
+                )}
               </article>
             );
           })}

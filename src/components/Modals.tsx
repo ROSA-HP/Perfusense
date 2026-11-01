@@ -16,9 +16,6 @@ interface ModalsProps {
   isProtocolOpen: boolean;
   onCloseProtocol: () => void;
   onSaveProtocol: (cadenceMin: number) => void;
-  inspectBed: PatientBed | null;
-  onCloseInspect: () => void;
-  onMonitorBed: (bedId: string) => void;
   toast: ToastState | null;
   onDismissToast: () => void;
 }
@@ -81,9 +78,6 @@ export const Modals: React.FC<ModalsProps> = ({
   isProtocolOpen,
   onCloseProtocol,
   onSaveProtocol,
-  inspectBed,
-  onCloseInspect,
-  onMonitorBed,
   toast,
   onDismissToast,
 }) => {
@@ -259,36 +253,6 @@ export const Modals: React.FC<ModalsProps> = ({
               }}
             >
               Save
-            </Button>
-          </div>
-        </Dialog>
-      )}
-
-      {inspectBed && (
-        <Dialog title={`${inspectBed.bedNumber} · ${inspectBed.pod}`} onClose={onCloseInspect}>
-          <h4 className="font-bold uppercase text-base mb-3">{inspectBed.patientName}</h4>
-          <dl className="grid grid-cols-2 gap-2 mb-3 font-label-mono-sm text-xs">
-            {[
-              ['Patient ID', inspectBed.patientId],
-              ['Braden', `${inspectBed.bradenScore} (${inspectBed.bradenRisk})`],
-              ['Position', inspectBed.posture],
-              ['Peak', `${inspectBed.peakPressure} mmHg`],
-              ['Status', inspectBed.statusLabel],
-              ['Next turn', inspectBed.countdown],
-              ['Last turn', inspectBed.lastTurnTime],
-              ['RN', inspectBed.assignedRn || '—'],
-            ].map(([k, v]) => (
-              <div key={k} className="bg-white border-[2px] border-[#121c1b] p-2 min-w-0">
-                <dt className="text-[9px] text-[#3f4947] uppercase">{k}</dt>
-                <dd className="font-bold truncate">{v}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="text-[11px] text-[#3f4947] mb-3">Turn every {settings.protocol.cadenceMin} min (ward setting).</p>
-          <div className="flex flex-col-reverse xs:flex-row justify-end gap-2">
-            <Button onClick={onCloseInspect}>Close</Button>
-            <Button tone="teal" onClick={() => onMonitorBed(inspectBed.id)}>
-              Monitor this bed
             </Button>
           </div>
         </Dialog>
