@@ -304,7 +304,8 @@ export default function App() {
       )}
 
       <div className={`w-full px-2.5 sm:px-6 lg:px-8 ${connected ? 'pt-16 sm:pt-20' : 'pt-24 sm:pt-28'} pb-20 md:pb-12`}>
-        <main className="w-full max-w-[1500px] mx-auto">
+        {/* key = tab: each page change replays a short rise-in */}
+        <main key={activeTab} className="w-full max-w-[1500px] mx-auto anim-rise">
           {activeTab === 'monitor' && monitoredBed && (
             <LiveHeatmapView
               bed={monitoredBed}
@@ -359,7 +360,11 @@ export default function App() {
               aria-current={active ? 'page' : undefined}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 relative ${active ? 'text-[#121c1b]' : 'text-[#3f4947]'}`}
             >
-              <span className={`w-10 h-7 flex items-center justify-center ${active ? 'bg-[#adefe7] border-[2px] border-[#121c1b]' : ''}`}>
+              <span
+                className={`w-10 h-7 flex items-center justify-center border-[2px] transition-all duration-200 ${
+                  active ? 'bg-[#adefe7] border-[#121c1b] shadow-[2px_2px_0px_#121c1b] -translate-y-0.5' : 'border-transparent'
+                }`}
+              >
                 <Icon name={t.icon} />
               </span>
               <span className="text-[10px] font-bold uppercase leading-none">{t.label}</span>
