@@ -12,3 +12,9 @@ coverage/
 # firmware host-test binary (built by firmware/run_checks.sh)
 firmware/test/test_processing
 firmware/test/test_processing.exe
+
+# Python AI work (ai/)
+ai/.venv/
+__pycache__/
+.ipynb_checkpoints/
+ai/models/
