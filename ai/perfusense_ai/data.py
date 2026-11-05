@@ -253,14 +253,14 @@ def whole_bed_view(recording):
 # ---------- the 30 x 30 cm patch (Lesson 3) ----------
 
 def sacrum_point(mean_map):
-    """Top-left corner of the mat on a flat supine map: the 10 x 10 box with the most pressure in
-    the middle third of the body. Searching the whole body would sometimes pick the shoulders."""
+    """Top-left corner of the mat on a flat supine map: the 10 x 10 box with the most pressure, with
+    its centre 42-62 % of the way from head to heel. Searching more widely can pick the shoulders."""
     rows = np.flatnonzero(mean_map.max(axis=1) > 0.05 * mean_map.max())
     head, feet = rows.min(), rows.max()
     c = np.pad(np.cumsum(np.cumsum(mean_map, axis=0), axis=1), ((1, 0), (1, 0)))
     box = c[GRID:, GRID:] - c[:-GRID, GRID:] - c[GRID:, :-GRID] + c[:-GRID, :-GRID]
     centre = np.arange(box.shape[0]) + GRID / 2
-    box[(centre < head + 0.33 * (feet - head)) | (centre > head + 0.67 * (feet - head))] = -1
+    box[(centre < head + 0.42 * (feet - head)) | (centre > head + 0.62 * (feet - head))] = -1
     r0, c0 = np.unravel_index(np.argmax(box), box.shape)
     return int(r0), int(c0)
 
