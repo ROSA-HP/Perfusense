@@ -1,8 +1,11 @@
 """Load, clean and shape the pressure datasets. Training and serving share this file.
 
-Common picture format ("canonical view"), used for every dataset:
+Common picture format ("training view"), used for every dataset:
   rows    = head (row 0) to foot
-  columns = column 0 is on the patient's LEFT, as in server/lib/zones.ts
+  columns = PmatData's direction: a person lying on their left loads the HIGH columns.
+
+Our server's zones put the patient's left in the LOW columns (server/lib/zones.ts), so frames from
+our mat pass through mat_to_model() once on the way in. See Lessons 2 and 6.
 """
 import json
 import os
@@ -74,6 +77,11 @@ def normalise_window(x, eps=1e-6):
     return np.clip(x / max(top, eps), 0.0, 1.0).astype("float32")
 
 
+def mat_to_model(frames):
+    """Frames from our mat (column 0 = patient's left) -> training view. Flips the columns."""
+    return frames[..., ::-1]
+
+
 def pad_to_width(frames, width=32):
     """Add empty columns on both sides, so a narrower mat keeps its real scale."""
     missing = width - frames.shape[2]
@@ -113,7 +121,7 @@ def popu_time(snapshot_id):
 def load_popu_file(path, mirror=True):
     """One PoPu JSON file -> frames (n, 64, 27), times (n,) in seconds.
 
-    mirror=True flips the columns into the canonical view: Lesson 2 shows PoPu needs this.
+    mirror=True flips the columns into the training view: Lesson 2 shows PoPu needs this.
     """
     with open(path) as f:
         snapshots = json.load(f)["snapshots"].values()
@@ -224,6 +232,16 @@ def still_windows(frames, rng, noise=0.02):
     """Turn single frames (n, 10, 10) into 30-frame windows: repeat each one with small sensor noise."""
     return np.stack([normalise_window(np.repeat(f[None], T, axis=0)
                                       * (1 + noise * rng.standard_normal((T,) + f.shape))) for f in frames])
+
+
+def synthetic_patch_windows(rng, jitter=2):
+    """All steps of Lesson 5 in one call: X (n, 30, 10, 10) and class index (n,)."""
+    frames, labels = load_bodypressure(mirror=True)
+    padded = pad_to_width(frames)
+    top, left = sacrum_point(padded[labels == 0].mean(axis=0))
+    patches = np.stack([crop_patch(f[None], top + rng.integers(-jitter, jitter + 1),
+                                   left + rng.integers(-jitter, jitter + 1))[0] for f in padded])
+    return still_windows(patches, rng), labels
 
 
 # ---------- windows ----------
