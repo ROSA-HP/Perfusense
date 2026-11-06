@@ -381,7 +381,7 @@ The Vite dev server always forwards `/api` to `API_URL` (default `http://localho
 
 ## 9. AI model (Transformer) and datasets
 
-**Status: designed and coded (in the PRD), not trained, not run, not connected to the server.**
+**Status: trained on public data and served by a local FastAPI service in `ai/`; not connected to the server; never tested on our own mat. The measured method and results are in `docs/AI_TRAINING_REPORT.md`, which replaces this section where they differ (the final model is a small last-frames network, 84.7 % balanced accuracy on unseen people on hospital mats; empty is a rule on average pressure).**
 
 ### 9.1 Job
 
@@ -469,7 +469,7 @@ Record the method for each (load used, number of trials, duration, temperature, 
 |---|---|---|
 | 1 Bench | Crosstalk, repeatability, drift over 4–8 h, calibration with known weights (0, 100, 200, 500, 1000 g), location error < 1 cell, 1–2 fps | Results reported for the first three |
 | 2 Software | Backend integration tests, firmware logic tests, device → server → command round trip | Done on simulated data; backend tests updated to 100-cell frames |
-| 3 AI | Accuracy on held-out people: baseline vs Transformer vs distilled | Code ready, not run |
+| 3 AI | Accuracy on held-out people: baseline vs Transformer | Done on public data: `docs/AI_TRAINING_REPORT.md`. Distillation not run. Our own mat not tested |
 | 4 Phantom | Soft silicone or gel model; compare with a reference mat if available; fluid-resistant cover | Planned |
 | 5 Volunteers | Healthy adults, short sessions, written consent, anonymous IDs | Planned, needs ethics approval. Never on patients in this project |
 
@@ -486,7 +486,7 @@ Success means every target is measured and reported, whether met or not.
 | Device commands (`ack`, `tare` in the frame reply) | Merged in `56ae7b4`; its integration test needs MongoDB to run |
 | ESP32 firmware | In the repo (`firmware/`); **updated for 10×10** (25 zones, 4 mux lines, fixes); host tests updated but not re-run (no g++); **not run on a board** |
 | Physical mat | 10×10, 30 × 30 cm per the deck; bench results reported |
-| AI model | Designed and coded; not trained; not connected |
+| AI model | Trained on public data; local service works; not connected; not tested on our mat |
 | Security (login, HTTPS) | Not started |
 | Phantom, ethics, volunteers | Not started |
 | ISEF materials | Poster, deck, interactive web presentation, diagrams |

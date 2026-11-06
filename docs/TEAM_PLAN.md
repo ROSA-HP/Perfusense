@@ -13,7 +13,7 @@ Background for everything here: [PERFUSENSE_GUIDE.md](../PERFUSENSE_GUIDE.md). R
 | ESP32 firmware | Rewritten for 10×10 and several bugs fixed; **not yet compiled or flashed** |
 | Server | Works with 100-cell frames, device commands, pressure history; **tests not re-run since the last changes** |
 | Dashboard | Reworked: Monitor, Beds, Zones, History, Mat; SAMPLE DATA when offline |
-| AI posture model | Designed; not trained |
+| AI posture model | Trained on public data (`docs/AI_TRAINING_REPORT.md`); not connected; not tested on our mat |
 | Login / HTTPS | Not started |
 
 ## The first two weeks (everyone): make the real chain work once
@@ -68,10 +68,9 @@ Each role has one owner and a buddy who reviews the work. Pick roles by interest
 **Done when:** the usability notes and fixes are written down in `docs/ux/`.
 
 ### 5. AI and data
-- Download PmatData (PhysioNet), check its licence, convert to 10×10 windows (guide section 9.3; PRD Appendix D, with `n = 10`).
-- Train the simple baseline first (average over time + small network), then the Transformer. Split **by person** (the same person never in train and test).
+- Done: PmatData, PoPu and BodyPressureSD converted to 10×10 windows; baseline, last-frames and Transformer compared, split **by person** (`ai/`, `docs/AI_TRAINING_REPORT.md`).
 - Record our own mat: each team member lies supine / left / right, 3 minutes each, labelled. This is the only data that can be called "our mat's accuracy".
-- Serve the model with FastAPI; the server sends the last 30 frames at 1 Hz.
+- The FastAPI service exists (`ai/serve.py`). Still to do: the server sends the last 30 frames at 1 Hz.
 
 **Done when:** a table of accuracy per held-out person, baseline vs Transformer, on public data and on our own recordings.
 

@@ -4,7 +4,7 @@ Guidance for Claude Code working in this repository.
 
 ## Project in one paragraph
 
-PerfuSense is an ISEF research prototype: a 10×10 (100-cell) Velostat pressure mat under a bedridden patient, read by an ESP32, which times how long each body area stays loaded and alerts caregivers to turn the patient before a pressure ulcer forms. This repo holds the **React dashboard** (`src/`) and the **Express + MongoDB backend** (`server/`). The ESP32 firmware (10×10, not yet run on a board) is in `firmware/`; the AI model is not built yet. Full background, numbers and design rationale: `PERFUSENSE_GUIDE.md`.
+PerfuSense is an ISEF research prototype: a 10×10 (100-cell) Velostat pressure mat under a bedridden patient, read by an ESP32, which times how long each body area stays loaded and alerts caregivers to turn the patient before a pressure ulcer forms. This repo holds the **React dashboard** (`src/`) and the **Express + MongoDB backend** (`server/`). The ESP32 firmware (10×10, not yet run on a board) is in `firmware/`; the posture model and its FastAPI service are in `ai/` but are not connected to the server, and have never been tested on our own mat. Full background, numbers and design rationale: `PERFUSENSE_GUIDE.md`.
 
 ## Hard rules
 
@@ -21,6 +21,7 @@ PerfuSense is an ISEF research prototype: a 10×10 (100-cell) Velostat pressure 
 - `Perfusense.md` (PRD v1.1) and `PLAN.md`: **historical**. They describe an 8×8 mat with MQTT, `server.js` and a `web/` folder that do not exist. Use them only for the AI-pipeline code in PRD Appendix D, and change its input size to 10×10.
 - `README.md`: short overview and run instructions (current).
 - `docs/TEAM_PLAN.md`: who does what next.
+- `docs/AI_TRAINING_REPORT.md` and `ai/README.md`: the posture model, its data, code and measured results.
 
 ## Commands
 
@@ -99,4 +100,4 @@ React --REST /api/...--> Express  (turns, snooze, zone resets, settings, tare)
 
 ## Not built yet
 
-AI service (Python/TensorFlow Transformer, planned as a separate FastAPI service fed 30 frames at 1 Hz), authentication and HTTPS, pager/EHR integration, `/calibrate` and `/impedance-sweep` (return 501), per-cell calibration to real mmHg.
+Connection from Express to the AI service in `ai/` (send the last 30 frames at 1 Hz, store the posture, turn events with a hold time), authentication and HTTPS, pager/EHR integration, `/calibrate` and `/impedance-sweep` (return 501), per-cell calibration to real mmHg.
